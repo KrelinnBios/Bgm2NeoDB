@@ -46,7 +46,7 @@
       <article class="account"><div class="account-icon neo">N</div><div class="account-info"><h2>NeoDB</h2><p id="neo-user">尚未连接账号</p></div><button id="neo-connect" class="secondary">连接 NeoDB</button><button id="neo-disconnect" class="secondary" hidden>断开</button></article>
     </section>
     <section class="workspace">
-      <div class="section-heading"><div><h2 id="workspace-title">连接账号后，扫描你的收藏</h2></div><div class="scan-actions"><label class="checkbox-option" title="使用 Bangumi 最后修改时间，可能不准确"><input type="checkbox" id="import-date" aria-describedby="import-date-hint" checked><span>导入收藏日期</span></label><span id="import-date-hint" class="sr-only">使用 Bangumi 最后修改时间，可能不准确</span><div class="scan-control"><button id="rescan" class="secondary" disabled>重启</button><button id="scan" disabled>开始自动迁移 →</button></div></div></div>
+      <div class="section-heading"><div><h2 id="workspace-title">连接账号后，扫描你的收藏</h2></div><div class="scan-actions"><label class="checkbox-option" title="使用 Bangumi 最后修改时间"><input type="checkbox" id="import-date" aria-describedby="import-date-hint" checked><span>导入收藏日期</span></label><span id="import-date-hint" class="sr-only">使用 Bangumi 最后修改时间</span><div class="scan-control"><button id="rescan" class="secondary" disabled>重启</button><button id="scan" disabled>开始自动迁移 →</button></div></div></div>
       <div class="migration-settings" aria-label="迁移设置">
         <div class="migration-rules"><p class="muted">自动迁移收藏状态、评分、短评和标签，写入后核对结果。解析失败的最后重试，写入失败时暂停。标签合并保留，搁置条目不导入评分。</p></div>
       </div>
