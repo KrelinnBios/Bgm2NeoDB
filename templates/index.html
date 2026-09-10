@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>Bgm2NeoDB - 迁移·备份·本地运行</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+  <script nonce="{{ nonce }}">
+    (function() {
+      var isTouchDevice = window.matchMedia && (
+        window.matchMedia('(hover: none)').matches ||
+        window.matchMedia('(pointer: coarse)').matches
+      );
+      if (!isTouchDevice) return;
+
+      var root = document.documentElement;
+      var scrollTimer = null;
+      var isScrolling = false;
+
+      function showScrollbar() {
+        if (!isScrolling) {
+          isScrolling = true;
+          root.classList.add('is-scrolling');
+        }
+        if (scrollTimer) clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(function() {
+          isScrolling = false;
+          root.classList.remove('is-scrolling');
+        }, 500);
+      }
+
+      window.addEventListener('scroll', showScrollbar, { passive: true });
+      window.addEventListener('touchmove', showScrollbar, { passive: true });
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/">Bangumi → NeoDB 迁移工具</a><span class="local"><i></i> 仅在本机运行</span></header>
+  <main>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div id="warning" class="notice warning" hidden></div>
+    <section class="accounts" aria-label="连接账号">
+      <article class="account"><div class="account-icon bgm">番</div><div class="account-info"><h2>Bangumi</h2><p id="bgm-user">尚未连接账号</p></div><button id="bgm-connect" class="secondary">连接 Bangumi</button><button id="bgm-disconnect" class="secondary" hidden>断开</button></article>
+      <article class="account"><div class="account-icon neo">N</div><div class="account-info"><h2>NeoDB</h2><p id="neo-user">尚未连接账号</p></div><button id="neo-connect" class="secondary">连接 NeoDB</button><button id="neo-disconnect" class="secondary" hidden>断开</button></article>
+    </section>
+    <section class="workspace">
+      <div class="section-heading"><div><h2 id="workspace-title">连接账号后，扫描你的收藏</h2></div><div class="scan-actions"><label class="checkbox-option" title="使用 Bangumi 最后修改时间，可能不准确"><input type="checkbox" id="import-date" aria-describedby="import-date-hint" checked><span>导入收藏日期</span></label><span id="import-date-hint" class="sr-only">使用 Bangumi 最后修改时间，可能不准确</span><div class="scan-control"><button id="rescan" class="secondary" disabled>重启</button><button id="scan" disabled>开始自动迁移 →</button></div></div></div>
+      <div class="migration-settings" aria-label="迁移设置">
+        <div class="migration-rules"><p class="muted">自动迁移收藏状态、评分、短评和标签，写入后核对结果。解析失败的最后重试，写入失败时暂停。标签合并保留，搁置条目不导入评分。</p></div>
+      </div>
+      <div id="progress-box" hidden><div class="progress-heading"><strong id="job-label" role="status" aria-live="polite">正在扫描</strong><span id="job-count">0 / 0</span></div><progress id="progress" max="1" value="0"></progress><div class="progress-heading"><span id="job-title" class="muted"></span></div></div>
+      <section id="stats" class="status-summary" aria-label="收藏状态统计" hidden>
+        <h3>Bangumi 收藏 · <strong id="total">0</strong> 项</h3>
+        <p class="muted">以下为当前结果，各项数量相加等于收藏总数。待处理会在继续自动迁移时重试；解析失败可在详情中手动匹配。点击状态查看对应作品。</p>
+        <div id="status-counts" class="stats"></div>
+      </section>
+      <div id="preview-box" hidden>
+        <div class="preview-heading"><h3>迁移记录</h3><div class="actions"><a href="/api/export/report" class="button secondary">导出报告</a><a href="/api/export/failed" class="button secondary">导出失败</a><a href="/api/export/source" class="button secondary">下载备份</a></div></div>
+        <div class="filters"><label>查看 <select id="filter"><option value="all">全部作品</option></select></label><label class="search"><span class="sr-only">搜索作品</span><input id="search" type="search" placeholder="搜索作品名称或编号"></label></div>
+        <div class="table-wrap"><table><thead><tr><th>作品</th><th>Bangumi</th><th>迁移后</th><th>处理状态</th><th><span class="sr-only">详情</span></th></tr></thead><tbody id="entries"></tbody></table></div>
+        <p id="empty" class="empty" hidden>没有符合条件的作品。</p>
+        <div class="pagination"><span id="page-label"></span><div><button id="prev" class="text-button">上一页</button><button id="next" class="text-button">下一页</button></div></div>
+      </div>
+    </section>
+  </main>
+  <dialog id="bgm-dialog"><form id="bgm-form"><div class="dialog-heading"><h2>连接 Bangumi</h2><button type="button" class="close text-button" aria-label="关闭">×</button></div><p>在 Bangumi 官方页面生成一份授权凭证，再粘贴到这里。我们会自动识别你的账号。</p><a class="official-link" href="{{ token_url }}" target="_blank" rel="noopener noreferrer">打开 Bangumi 官方授权页面 ↗</a><label class="field">授权凭证<input id="bgm-token" type="password" autocomplete="off" required maxlength="4096" placeholder="仅需粘贴一次"></label><p class="muted">不要输入你的 Bangumi 密码。</p><button type="submit">验证并连接</button></form></dialog>
+  <dialog id="neo-dialog"><form id="neo-form"><div class="dialog-heading"><h2>连接 NeoDB</h2><button type="button" class="close text-button" aria-label="关闭">×</button></div><p>选择你注册账号的实例，随后前往官方页面登录并授权。</p><label class="field">NeoDB 实例<input id="neo-instance" type="text" value="https://neodb.social" required></label><p class="muted">使用自建实例时，填写它的 HTTPS 公网地址。</p><button type="submit">前往 NeoDB 授权</button></form></dialog>
+  <dialog id="detail-dialog" class="detail-dialog"><div class="detail-scroll"><div class="dialog-heading"><h2 id="detail-title"></h2><button type="button" class="close text-button" aria-label="关闭">×</button></div><div id="detail-content"></div></div></dialog>
+</body>
+</html>

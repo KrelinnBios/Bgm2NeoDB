@@ -1,0 +1,165 @@
+// Run with Node.js and Playwright available in NODE_PATH.
+const { chromium } = require('playwright');
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+
+(async () => {
+  const browser = await chromium.launch({headless:true});
+  try {
+    const page = await browser.newPage({viewport:{width:1280,height:850}});
+    const root = path.resolve(__dirname, '..');
+    let reject = true, calls = 0, starts = 0, pending = false, retryAfter = 15, polls = 0, failure = '该目标已被另一条收藏占用。';
+    const mapInputs=[], jobOptions=[];
+    let releaseMapping;
+    let holdMapping=false;
+    const row = {id:1,title:'测试作品',status:'conflict',source_status:'想看',source_type:4,source_platform:'PC',resolution:{message:'存在多个匹配候选，请确认具体作品或版本。',candidates:Array.from({length:12},(_,i)=>({title:`测试版本 ${i+1}`,type:'Game',url:`https://neo.example/game/${i+1}`}))}};
+    row.resolution.candidates[0].metadata={release_date:'2009-01-01',season_number:1,episode_count:12,director:['测试导演'],description:'用于区分同名版本的简介'};
+    row.resolution.candidates[0].external_resources=[{url:'https://bgm.tv/subject/123'},{url:'javascript:alert(1)'}];
+    row.source_url='https://bgm.tv/subject/123';
+    await page.route('http://mapping.test/**', async route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/state') return route.fulfill({json:{job:{running:false,done:0,total:1},bangumi:{username:'test'},neodb:{instance:'https://neodb.social',user:{}},has_snapshot:true,summary:{total:1,conflict:1,needs_attention:1,retryable:0}}});
+      if (url.pathname === '/api/entries') return route.fulfill({json:{entries:[row],total:1}});
+      if (url.pathname === '/api/map/1/pending') { polls++; return route.fulfill({status:200,json:{ok:true,pending,retry_after:retryAfter}}); }
+      if (url.pathname === '/api/map/1') {
+        calls++;
+        mapInputs.push(route.request().postDataJSON());
+        if(holdMapping)await new Promise(resolve=>{releaseMapping=resolve;});
+        await new Promise(resolve=>setTimeout(resolve,200));
+        if (!reject && pending) return route.fulfill({status:200,json:{ok:true,pending:true,retry_after:retryAfter,message:'NeoDB 正在抓取该链接。'}});
+        return route.fulfill({status:reject?400:200,json:reject?{error:failure}:{ok:true}});
+      }
+      if (url.pathname === '/api/jobs/item/1') { starts++; jobOptions.push(route.request().postDataJSON()); return route.fulfill({json:{ok:true}}); }
+      const file = url.pathname === '/' ? 'templates/index.html' : url.pathname.slice(1);
+      return route.fulfill({body:fs.readFileSync(path.join(root,file)),contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
+    });
+    await page.goto('http://mapping.test/');
+    await page.locator('#import-date').uncheck();
+    await page.getByRole('button',{name:'详情'}).click();
+    const dialog=page.locator('#detail-dialog');
+    const sourceLink=dialog.getByRole('link',{name:'Bangumi 原条目'});
+    assert.equal(await sourceLink.getAttribute('class'),'button secondary');
+    const createLink=dialog.getByRole('link',{name:'在 NeoDB 创建条目'});
+    assert.equal(await createLink.getAttribute('href'),'https://neodb.social/catalog/create/Game?title=%E6%B5%8B%E8%AF%95%E4%BD%9C%E5%93%81');
+    await sourceLink.hover();
+    await sourceLink.evaluate(node=>{const selection=window.getSelection();const range=document.createRange();range.selectNodeContents(node);selection.removeAllRanges();selection.addRange(range);});
+    assert.equal(await sourceLink.evaluate(node=>getComputedStyle(node).textDecorationLine),'none');
+    assert.equal(await page.locator('#entries button').getAttribute('class'),'secondary');
+    await page.evaluate(()=>window.getSelection().removeAllRanges());
+    await page.getByText('提示：外链抓取最多等待 60 秒',{exact:false}).waitFor({state:'visible'});
+    assert.equal(await page.evaluate(()=>getComputedStyle(document.body).overflow),'hidden');
+    assert.equal(await page.locator('.map-list').evaluate(node=>getComputedStyle(node).overflowY),'visible');
+    assert.equal(await dialog.locator('.close').evaluate(node=>getComputedStyle(node).borderRadius),'50%');
+     assert.equal(await dialog.locator('.close').evaluate(node=>getComputedStyle(node).position),'relative');
+    assert.match(await page.locator('.candidate-details').first().textContent(),/第 1 季.*12 集.*测试导演/);
+    assert.equal(await page.locator('.candidate-details').first().locator('a').count(),1);
+    assert.equal(await page.locator('.candidate-details').first().locator('a').getAttribute('href'),row.resolution.candidates[0].url);
+    await page.getByText('查看简介',{exact:true}).click();
+    assert(await page.getByText('用于区分同名版本的简介',{exact:true}).isVisible());
+    const input=page.getByLabel('粘贴作品链接（NeoDB 或外部来源）');
+    assert((await input.boundingBox()).y < (await page.locator('.map-list').boundingBox()).y);
+    assert.equal(await pickComputedAlignment(page), 'center');
+    await page.getByRole('button',{name:'按链接导入',exact:true}).click();
+    await page.getByText('请先粘贴 NeoDB 条目链接或外部来源链接。',{exact:true}).waitFor({state:'visible'});
+    assert.equal(calls,0);
+    const pick=page.locator('.candidate-pick').first();
+    await pick.click();
+    assert(await pick.isDisabled());
+    assert.equal(await pick.textContent(),'正在保存…');
+    await page.getByText('该目标已被另一条收藏占用。',{exact:true}).waitFor({state:'visible'});
+    assert(await dialog.isVisible());
+    assert.equal(calls,1);
+    await page.waitForFunction(()=>!document.querySelector('.candidate-pick').disabled);
+    reject=false;
+    await pick.click();
+    await dialog.waitFor({state:'hidden'});
+    assert.equal(calls,2);
+    assert.equal(starts,1);
+    assert.deepEqual(jobOptions,[{import_date:false}]);
+    assert.match(await page.locator('#notice').textContent(),/自动迁移已开始/);
+    await page.getByRole('button',{name:'详情'}).click();
+    await page.setViewportSize({width:390,height:844});
+    assert(await input.isVisible());
+    const bounds=await dialog.boundingBox();
+    assert(bounds.x>=0 && bounds.x+bounds.width<=390);
+    assert(await page.locator('#map-url-hint').isVisible());
+    const external='https://store.steampowered.com/app/123456/';
+    await input.fill(external);
+    reject=true;
+    failure='NeoDB 不支持该来源或链接格式不正确，请换一个该实例支持的作品来源链接。';
+    const submit=page.getByRole('button',{name:'按链接导入',exact:true});
+    await submit.click();
+    await page.getByText('正在提交给 NeoDB 解析链接…',{exact:false}).waitFor({state:'visible'});
+    assert.match(await page.locator('.map-countdown').textContent(),/剩余 60 秒/);
+    assert(await input.isDisabled());
+    assert(await page.getByRole('button',{name:'正在解析链接…',exact:true}).isDisabled());
+    await page.getByText(failure+' 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。',{exact:true}).waitFor({state:'visible'});
+    assert.equal(starts,1);
+    assert.equal(await input.inputValue(),external);
+    assert(await dialog.isVisible());
+    await page.waitForFunction(()=>!document.querySelector('#map-url').disabled);
+    reject=false;
+    await input.press('Enter');
+    await dialog.waitFor({state:'hidden'});
+    assert.equal(calls,4);
+    assert.deepEqual(mapInputs.slice(2),[{url:external},{url:external}]);
+    assert.equal(starts,2);
+    assert.deepEqual(jobOptions,[{import_date:false},{import_date:false}]);
+    await page.getByRole('button',{name:'详情'}).click();
+    await input.fill(external);
+    await page.clock.install();
+    await page.clock.pauseAt(new Date());
+    pending=true;
+    await submit.click();
+    await page.getByText('NeoDB 正在抓取该外链，稍后会自动重试。',{exact:false}).waitFor({state:'visible'});
+    await page.clock.runFor(14000);
+    assert.equal(polls,0);
+    assert.match(await page.locator('.map-countdown').textContent(),/剩余 46 秒/);
+    await page.clock.runFor(1000);
+    await page.waitForFunction(()=>document.querySelector('.map-countdown').textContent.includes('45'));
+    assert.equal(polls,1);
+    await page.clock.runFor(45000);
+    await page.getByText('等待已满 60 秒，已停止自动重试。 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。',{exact:true}).waitFor({state:'visible'});
+    await page.waitForFunction(()=>!document.querySelector('#map-url').disabled);
+    assert.equal(await input.inputValue(),external);
+    assert.equal(starts,2);
+    assert.equal(await page.locator('.map-countdown').count(),0);
+    const stoppedPolls=polls;
+    await page.clock.runFor(60000);
+    assert.equal(polls,stoppedPolls);
+    // Retry-After longer than the remaining budget must not extend the deadline.
+    retryAfter=120;
+    await submit.click();
+    await page.getByText('NeoDB 正在抓取该外链，稍后会自动重试。',{exact:false}).waitFor({state:'visible'});
+    await page.clock.runFor(60000);
+    await page.getByText('等待已满 60 秒，已停止自动重试。 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。',{exact:true}).waitFor({state:'visible'});
+    assert.equal(polls,stoppedPolls);
+    assert.equal(starts,2);
+    // A successful pending lookup still starts migration before the deadline.
+    await page.waitForFunction(()=>!document.querySelector('#map-url').disabled);
+    retryAfter=15;
+    await submit.click();
+    await page.getByText('NeoDB 正在抓取该外链，稍后会自动重试。',{exact:false}).waitFor({state:'visible'});
+    pending=false;
+    await page.clock.runFor(15000);
+    await dialog.waitFor({state:'hidden'});
+    assert.equal(starts,3);
+    // The initial HTTP request also shares the deadline; a late response cannot start migration.
+    await page.getByRole('button',{name:'详情'}).click();
+    await input.fill(external);
+    holdMapping=true;
+    await submit.click();
+    await page.getByText('正在提交给 NeoDB 解析链接…',{exact:false}).waitFor({state:'visible'});
+    await page.clock.runFor(60000);
+    await page.getByText('等待已满 60 秒，已停止自动重试。 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。',{exact:true}).waitFor({state:'visible'});
+    await page.waitForFunction(()=>!document.querySelector('#map-url').disabled);
+    releaseMapping();
+    await page.clock.runFor(60000);
+    assert.equal(starts,3);
+    assert(await dialog.isVisible());
+    console.log('PASS: 候选选择、外链导入、60 秒倒计时与停止重试、Retry-After、抓取成功、失败引导、单条启动、日期开关、移动端宽度');
+  } finally { await browser.close(); }
+})().catch(error=>{console.error(error);process.exitCode=1;});
+
+async function pickComputedAlignment(page){return page.locator('.map-list li').first().evaluate(node=>getComputedStyle(node).alignItems);}

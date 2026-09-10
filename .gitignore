@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-*/
+.tmptest/
+.ruff_cache/
+node_modules/
+debug_page.html
+dump_dom.html
+server.pid
+data/
+.env
+*.log
+build/
+dist/
+*.egg-info/
