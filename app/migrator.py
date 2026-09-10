@@ -671,7 +671,6 @@ class Migrator:
             # 每条独立超时处理
             async def process_with_individual_timeout(row):
                 import time
-                individual_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
                 unix_individual_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
                 # 设置当前条目的倒计时
                 self.job["countdown_deadline"] = unix_individual_deadline

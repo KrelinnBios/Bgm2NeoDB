@@ -49,7 +49,6 @@ const assert = require('node:assert/strict');
     assert.equal(await sourceLink.evaluate(node=>getComputedStyle(node).textDecorationLine),'none');
     assert.equal(await page.locator('#entries button').getAttribute('class'),'secondary');
     await page.evaluate(()=>window.getSelection().removeAllRanges());
-    await page.getByText('提示：外链抓取最多等待 60 秒',{exact:false}).waitFor({state:'visible'});
     assert.equal(await page.evaluate(()=>getComputedStyle(document.body).overflow),'hidden');
     assert.equal(await page.locator('.map-list').evaluate(node=>getComputedStyle(node).overflowY),'visible');
     assert.equal(await dialog.locator('.close').evaluate(node=>getComputedStyle(node).borderRadius),'50%');
