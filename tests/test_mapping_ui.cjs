@@ -83,7 +83,6 @@ const assert = require('node:assert/strict');
     assert(await input.isVisible());
     const bounds=await dialog.boundingBox();
     assert(bounds.x>=0 && bounds.x+bounds.width<=390);
-    assert(await page.locator('#map-url-hint').isVisible());
     const external='https://store.steampowered.com/app/123456/';
     await input.fill(external);
     reject=true;

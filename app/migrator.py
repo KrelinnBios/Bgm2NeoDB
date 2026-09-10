@@ -673,20 +673,26 @@ class Migrator:
             async def process_with_individual_timeout(row):
                 import time
 
+                individual_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
                 unix_individual_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
                 # 设置当前条目的倒计时
                 self.job["countdown_deadline"] = unix_individual_deadline
+
+                # 临时覆盖deadline检查
+                original_check = neo._next_request
+                neo._next_request = individual_deadline
                 try:
                     await process(row, False)
                 finally:
-                    # 处理完清除
-                    pass
+                    # 恢复原有的deadline
+                    neo._next_request = original_check
 
             await asyncio.gather(*(process_with_individual_timeout(row) for row in remaining))
             if fatal:
                 raise fatal
             # 清除倒计时标记
             self.job.pop("countdown_deadline", None)
+            self.job.pop("phase_start_time", None)
             self.job.pop("phase_start_time", None)
         neo.checkpoint()
 
