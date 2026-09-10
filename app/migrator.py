@@ -661,33 +661,18 @@ class Migrator:
         if remaining:
             import time
 
+            final_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
+            # 前端需要Unix时间戳（秒），计算实际的截止时间
+            unix_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
             start_time = time.time()
             self.job.update(
                 done=0,
                 total=len(remaining),
-                message=f"快速条目已处理，正在处理剩余条目（每条最多 {RESOLVE_FINAL_TIMEOUT} 秒）；已开始写入的条目会继续核对…",
+                message=f"快速条目已处理，剩余条目共用最多 {RESOLVE_FINAL_TIMEOUT} 秒等待解析；已开始写入的条目会继续核对…",
+                countdown_deadline=unix_deadline,
                 phase_start_time=start_time,
             )
-
-            # 每条独立超时处理
-            async def process_with_individual_timeout(row):
-                import time
-
-                individual_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
-                unix_individual_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
-                # 设置当前条目的倒计时
-                self.job["countdown_deadline"] = unix_individual_deadline
-
-                # 临时覆盖deadline检查
-                original_check = neo._next_request
-                neo._next_request = individual_deadline
-                try:
-                    await process(row, False)
-                finally:
-                    # 恢复原有的deadline
-                    neo._next_request = original_check
-
-            await asyncio.gather(*(process_with_individual_timeout(row) for row in remaining))
+            await asyncio.gather(*(process(row, False) for row in remaining))
             if fatal:
                 raise fatal
             # 清除倒计时标记
