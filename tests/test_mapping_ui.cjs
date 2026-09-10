@@ -35,6 +35,8 @@ const assert = require('node:assert/strict');
       return route.fulfill({body:fs.readFileSync(path.join(root,file)),contentType:file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/html'});
     });
     await page.goto('http://mapping.test/');
+    assert.equal(await page.locator('.preview-heading .filters').count(),1);
+    assert.equal(await page.locator('a[href^="/api/export/"]').count(),0);
     await page.locator('#import-date').uncheck();
     await page.getByRole('button',{name:'详情'}).click();
     const dialog=page.locator('#detail-dialog');

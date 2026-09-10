@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from app.errors import AppError
@@ -20,7 +18,7 @@ async def run(engine, kind):
     ):
         try:
             if kind == "prepare":
-                await engine.export(bgm, source["user"])
+                await engine.scan(bgm, source["user"])
                 await engine.preview(neo)
             elif kind in {"preview", "retry"}:
                 await engine.preview(neo, only_failures=kind == "retry")
@@ -37,16 +35,13 @@ async def engine(tmp_path, store, server):
     await engine.close()
 
 
-async def test_preparation_never_writes_and_archives_every_field(engine, server):
+async def test_scan_never_writes_and_keeps_all_fields_in_database(engine, server):
     await run(engine, "prepare")
     assert engine.report()["ready"] == 1
     assert server.writes == []
-    snapshot = json.loads(
-        (engine.data / "profiles" / engine.pid / "bangumi-export.json").read_text(encoding="utf-8")
-    )
-    assert snapshot["complete"]
-    assert snapshot["pages"][0]["unknown_field"] == {"keep": True}
-    assert snapshot["pages"][0]["data"][0] == server.sources[0]
+    row = engine.db.rows(engine.pid)[0]
+    assert row["source"] == server.sources[0]
+    assert not list((engine.data / "profiles" / engine.pid).glob("*.json"))
 
 
 async def test_explicit_preview_schedules_another_write_even_when_identical(engine, server):
@@ -333,13 +328,13 @@ async def test_secrets_never_written_to_data_files(engine, server):
             assert b"NEO-SECRET" not in content
 
 
-async def test_rescan_keeps_original_snapshots_and_excludes_removed_sources(engine, server):
+async def test_rescan_excludes_removed_sources_without_backup_files(engine, server):
     server.sources = [collection(1), collection(2)]
     await run(engine, "prepare")
     server.sources = [collection(2)]
     await run(engine, "prepare")
     assert [r["subject_id"] for r in engine.db.rows(engine.pid)] == [2]
-    assert len(list((engine.data / "profiles" / engine.pid / "snapshots").glob("*.json"))) == 2
+    assert not (engine.data / "profiles" / engine.pid / "snapshots").exists()
 
 
 async def test_scan_automatically_writes_without_manual_step(engine, server):
@@ -752,7 +747,7 @@ async def test_auto_reaches_eight_writers_and_stops_queued_writes_on_failure(eng
     await asyncio.wait_for(run(engine, "auto"), timeout=5)
     assert peak == WRITE_CONCURRENCY == 8
     assert len(started) == 8
-    report = engine.report(persist=False)
+    report = engine.report()
     assert report["migrated"] == 7
     assert report["partial"] == 1
     assert report["ready"] + report["pending"] == 16
@@ -787,8 +782,8 @@ async def test_concurrent_targets_merged_before_write_are_not_overwritten(engine
     server.handler = handle
     await run(engine, "auto")
     assert len(server.writes) == 1
-    assert engine.report(persist=False)["migrated"] == 1
-    assert engine.report(persist=False)["conflict"] == 1
+    assert engine.report()["migrated"] == 1
+    assert engine.report()["conflict"] == 1
 
 
 async def test_batch_full_table_reads_do_not_grow_per_item(engine, server, monkeypatch):

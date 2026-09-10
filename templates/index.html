@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf }}">
-  <title>Bgm2NeoDB - 迁移·备份·本地运行</title>
+  <title>Bgm2NeoDB - 迁移·本地运行</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/app.js" defer></script>
   <script nonce="{{ nonce }}">
@@ -57,8 +57,7 @@
         <div id="status-counts" class="stats"></div>
       </section>
       <div id="preview-box" hidden>
-        <div class="preview-heading"><h3>迁移记录</h3><div class="actions"><a href="/api/export/report" class="button secondary">导出报告</a><a href="/api/export/failed" class="button secondary">导出失败</a><a href="/api/export/source" class="button secondary">下载备份</a></div></div>
-        <div class="filters"><label>查看 <select id="filter"><option value="all">全部作品</option></select></label><label class="search"><span class="sr-only">搜索作品</span><input id="search" type="search" placeholder="搜索作品名称或编号"></label></div>
+        <div class="preview-heading"><h3>迁移记录</h3><div class="filters"><label><select id="filter"><option value="all">全部作品</option></select></label><label class="search"><span class="sr-only">搜索作品</span><input id="search" type="search" placeholder="搜索作品名称或编号"></label></div></div>
         <div class="table-wrap"><table><thead><tr><th>作品</th><th>Bangumi</th><th>迁移后</th><th>处理状态</th><th><span class="sr-only">详情</span></th></tr></thead><tbody id="entries"></tbody></table></div>
         <p id="empty" class="empty" hidden>没有符合条件的作品。</p>
         <div class="pagination"><span id="page-label"></span><div><button id="prev" class="text-button">上一页</button><button id="next" class="text-button">下一页</button></div></div>

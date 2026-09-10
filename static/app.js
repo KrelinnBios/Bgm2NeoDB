@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 const csrf = document.querySelector('meta[name="csrf-token"]').content;
 const shelfNames = {wishlist:"想看",complete:"看过",progress:"在看",dropped:"抛弃"};
+let countdownInterval = null;
 const statusNames = {
   pending:"待处理",
   ready:"待处理",
@@ -102,11 +103,10 @@ function detail(row){
     const incompleteHint=row.resolution?.code === "incomplete"
       ? "搜索结果还没返回完整，暂不自动选择，请从候选中确认或重新查找。"
       : "";
-    const adultHint=element("p",`提示：${incompleteHint ? `${incompleteHint} ` : ""}外链抓取最多等待 60 秒。如果仍未找到，请先在 NeoDB 创建条目，再粘贴链接。`,"map-adult-hint");
-    adultHint.id="map-url-hint";
     if(incompleteHint)guidanceNode.hidden=true;
     const feedback=element("p",undefined,"notice map-feedback");feedback.hidden=true;feedback.setAttribute("role","status");feedback.setAttribute("aria-live","polite");
     const showFeedback=(message,error=false)=>{guidanceNode.hidden=true;feedback.textContent=message;feedback.hidden=false;feedback.classList.toggle("warning",error);};
+    if(incompleteHint)showFeedback(incompleteHint,true);
     const mapAction=async(button,label,fn)=>{
       if(busy){showFeedback("正在处理上一项操作，请稍候再试。",true);return;}
       busy=true;const original=button.textContent;
@@ -140,7 +140,6 @@ function detail(row){
         pick.onclick=()=>mapAction(pick,"正在保存…",async()=>{
           await api(`/api/map/${row.id}`,{url:candidate.url});
           await api(`/api/jobs/item/${row.id}`,{import_date:$("import-date").checked});
-          notice("已确认，自动迁移已开始。");
           $("detail-dialog").close();
         });
         li.append(details,pick);list.append(li);
@@ -152,7 +151,7 @@ function detail(row){
         renderCandidates(res);
         showFeedback(res.resolution?.message||`找到 ${res.candidates.length} 个候选，请核对后选择。`);
     });
-    const input=element("input");input.type="text";input.id="map-url";input.value=row.resolution?.pending_url||"";input.placeholder="https://bgm.tv/subject/…";input.setAttribute("aria-describedby","map-url-hint");
+    const input=element("input");input.type="text";input.id="map-url";input.value=row.resolution?.pending_url||"";input.placeholder="https://bgm.tv/subject/…";
     const inputLabel=element("label","粘贴作品链接（NeoDB 或外部来源）","map-input-label");inputLabel.htmlFor=input.id;
     const linkBtn=element("button","按链接导入","secondary");linkBtn.type="button";
     linkBtn.onclick=()=>mapAction(linkBtn,"正在解析链接…",async()=>{
@@ -188,13 +187,12 @@ function detail(row){
         clearTimeout(timeout);clearTimeout(retryTimer);clearInterval(countdown);
       }
       await api(`/api/jobs/item/${row.id}`,{import_date:$("import-date").checked});
-      notice("已确认，自动迁移已开始。");
       $("detail-dialog").close();
     });
     input.onkeydown=event=>{if(event.key==="Enter"){event.preventDefault();linkBtn.click();}};
     const linkRow=element("div",undefined,"map-link");linkRow.append(input,linkBtn);
     const candidateHeading=element("div",undefined,"candidate-heading");candidateHeading.append(element("strong","候选条目"),searchBtn);
-    mapBox.append(inputLabel,linkRow,adultHint,feedback,candidateHeading,list);
+    mapBox.append(inputLabel,linkRow,feedback,candidateHeading,list);
     box.append(mapBox);
   }
   if(row.plan){
@@ -241,7 +239,26 @@ async function refresh(force=false){
   $("rescan").disabled=running||busy||!connected;
   $("rescan").title=running?"请先暂停当前任务，再重新扫描":"重新读取 Bangumi 收藏并迁移";
   $("workspace-title").textContent=running?"正在处理你的收藏":state.has_snapshot?"查看迁移进度与结果":connected?"账号已连接，开始自动迁移":"连接账号后，扫描你的收藏";
-  $("progress-box").hidden=!running&&!state.job.message;$("job-label").textContent=state.job.message||"自动迁移中";$("job-count").textContent=`${state.job.done} / ${state.job.total}`;
+  $("progress-box").hidden=!running&&!state.job.message;
+  // 处理倒计时和总用时
+  if(state.job.countdown_deadline){
+    if(!countdownInterval){
+      countdownInterval=setInterval(()=>{
+        const remaining=Math.max(0,Math.ceil(state.job.countdown_deadline-Date.now()/1000));
+        const elapsed=state.job.phase_start_time?Math.floor(Date.now()/1000-state.job.phase_start_time):0;
+        const elapsedText=elapsed>0?` · 总用时 ${elapsed} 秒`:"";
+        $("job-label").textContent=`快速条目已处理，正在处理剩余条目（当前条目剩余 ${remaining} 秒${elapsedText}）；已开始写入的条目会继续核对…`;
+      },1000);
+    }
+    const remaining=Math.max(0,Math.ceil(state.job.countdown_deadline-Date.now()/1000));
+    const elapsed=state.job.phase_start_time?Math.floor(Date.now()/1000-state.job.phase_start_time):0;
+    const elapsedText=elapsed>0?` · 总用时 ${elapsed} 秒`:"";
+    $("job-label").textContent=`快速条目已处理，正在处理剩余条目（当前条目剩余 ${remaining} 秒${elapsedText}）；已开始写入的条目会继续核对…`;
+  }else{
+    if(countdownInterval){clearInterval(countdownInterval);countdownInterval=null;}
+    $("job-label").textContent=state.job.message||"自动迁移中";
+  }
+  $("job-count").textContent=`${state.job.done} / ${state.job.total}`;
   for(const id of ["job-count","progress","job-title"])$(id).hidden=!running;
   $("progress").max=Math.max(1,state.job.total);$("progress").value=state.job.done;$("job-title").textContent=state.job.title;
   $("stats").hidden=!state.has_snapshot;$("preview-box").hidden=!state.has_snapshot;
@@ -261,7 +278,7 @@ for(const dialog of document.querySelectorAll("dialog"))dialog.addEventListener(
 $("bgm-connect").onclick=()=>openDialog($("bgm-dialog"));
 $("neo-connect").onclick=()=>{$("neo-instance").value=lastState?.neodb?.instance||"https://neodb.social";openDialog($("neo-dialog"));};
 $("bgm-dialog").addEventListener("close",()=>{$("bgm-token").value="";});
-$("bgm-form").onsubmit=event=>{event.preventDefault();action(async()=>{const token=$("bgm-token").value;$("bgm-token").value="";$("bgm-dialog").close();await api("/api/connect/bangumi",{token});notice("Bangumi 连接成功。");});};
+$("bgm-form").onsubmit=event=>{event.preventDefault();action(async()=>{const token=$("bgm-token").value;$("bgm-token").value="";$("bgm-dialog").close();await api("/api/connect/bangumi",{token});});};
 $("neo-form").onsubmit=event=>{event.preventDefault();action(async()=>{$("neo-dialog").close();const result=await api("/api/connect/neodb",{instance:$("neo-instance").value});window.location.assign(result.url);});};
 for(const platform of ["bgm","neo"])$(platform+"-disconnect").onclick=()=>action(()=>api("/api/disconnect/"+(platform==="bgm"?"bangumi":"neodb"),{}));
 $("scan").onclick=()=>action(async()=>{

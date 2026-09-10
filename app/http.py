@@ -77,7 +77,7 @@ class APIClient:
             timeout=30,
             follow_redirects=False,
             transport=transport,
-            limits=httpx.Limits(max_connections=48, max_keepalive_connections=24),
+            limits=httpx.Limits(max_connections=64, max_keepalive_connections=32),
         )
 
     async def __aenter__(self):

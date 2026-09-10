@@ -14,18 +14,6 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def atomic_json(path: Path, value):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".tmp")
-    with temp.open("w", encoding="utf-8") as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2)
-        stream.flush()
-        import os
-
-        os.fsync(stream.fileno())
-    temp.replace(path)
-
-
 def profile_id(bangumi_id, instance, neodb_url):
     return hashlib.sha256(encode([bangumi_id, instance, neodb_url]).encode()).hexdigest()[:24]
 
@@ -86,15 +74,30 @@ class Database:
     def import_snapshot(self, pid, scan, sources):
         with self.connect() as db:
             for source in sources:
-                db.execute(
-                    """INSERT INTO entries(profile,subject_id,source,scan,updated_at)
-                    VALUES(?,?,?,?,?) ON CONFLICT(profile,subject_id) DO UPDATE SET
-                    source=excluded.source, scan=excluded.scan, plan=NULL,
-                    status='pending',stage='',error='',subject_detail=NULL,
-                    resolution=CASE WHEN json_extract(entries.resolution,'$.basis')='manual'
-                    THEN entries.resolution ELSE NULL END,updated_at=excluded.updated_at""",
-                    (pid, source["subject_id"], encode(source), scan, now()),
-                )
+                source_json = encode(source)
+                # 检查条目是否已存在且已完成迁移
+                existing = db.execute(
+                    "SELECT source, status FROM entries WHERE profile=? AND subject_id=?",
+                    (pid, source["subject_id"])
+                ).fetchone()
+
+                if existing and existing["status"] == "migrated" and existing["source"] == source_json:
+                    # 已完成且数据未变化，仅更新scan标记，保持migrated状态
+                    db.execute(
+                        "UPDATE entries SET scan=?, updated_at=? WHERE profile=? AND subject_id=?",
+                        (scan, now(), pid, source["subject_id"])
+                    )
+                else:
+                    # 新条目或数据有变化，按原逻辑处理
+                    db.execute(
+                        """INSERT INTO entries(profile,subject_id,source,scan,updated_at)
+                        VALUES(?,?,?,?,?) ON CONFLICT(profile,subject_id) DO UPDATE SET
+                        source=excluded.source, scan=excluded.scan, plan=NULL,
+                        status='pending',stage='',error='',subject_detail=NULL,
+                        resolution=CASE WHEN json_extract(entries.resolution,'$.basis')='manual'
+                        THEN entries.resolution ELSE NULL END,updated_at=excluded.updated_at""",
+                        (pid, source["subject_id"], source_json, scan, now()),
+                    )
             db.execute("UPDATE profiles SET scan=?,export_complete=1 WHERE id=?", (scan, pid))
 
     def rows(self, pid, *, subject_id=None):

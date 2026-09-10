@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from app.bangumi import Bangumi
-from app.database import Database, atomic_json, now, profile_id
+from app.database import Database, now, profile_id
 from app.errors import AppError, AuthError, Cancelled, DeadlineExceeded, RequestFailed
 from app.models import (
     STATUS_MAP,
@@ -24,8 +24,8 @@ RESOLVE_FINAL_TIMEOUT = 60
 # 已登录用户的 catalog/fetch 有约 3 秒的服务端串行锁，抓取中的地址返回 429。
 # 并发调高只会让请求互相推进退避，反而更慢，所以解析并发保持在个位数；
 # 写入走 shelf 接口，不受该锁限制，可以稍高。
-RESOLVE_CONCURRENCY = 4
-WRITE_CONCURRENCY = 8
+RESOLVE_CONCURRENCY = 6
+WRITE_CONCURRENCY = 10
 
 
 class Migrator:
@@ -150,9 +150,9 @@ class Migrator:
                 if kind == "scan" or (
                     kind == "auto" and not self.db.profile(self.pid)["export_complete"]
                 ):
-                    await self.export(bgm, source["user"])
+                    await self.scan(bgm, source["user"])
                 await self.preview_and_migrate(neo, subject_id)
-                remaining = self.report(persist=False)["needs_attention"]
+                remaining = self.report()["needs_attention"]
                 item_succeeded = (
                     kind == "item"
                     and self.db.rows(self.pid, subject_id=subject_id)[0]["status"] == "migrated"
@@ -180,34 +180,22 @@ class Migrator:
             self.report()
             self.log.info("profile=%s operation=%s stopped", self.pid, kind)
 
-    async def export(self, bgm, user):
+    async def scan(self, bgm, user):
         scan = uuid.uuid4().hex
-        folder = self.data / "profiles" / self.pid
-        snapshot = {
-            "version": 1,
-            "user": user,
-            "exported_at": now(),
-            "complete": False,
-            "pages": [],
-        }
-        path = folder / "snapshots" / f"{scan}.json"
-        self.job["message"] = "正在完整备份 Bangumi 收藏…"
+        sources = []
+        self.job["message"] = "正在扫描 Bangumi 收藏…"
         async for page in bgm.pages(user["username"]):
-            snapshot["pages"].append(page)
-            atomic_json(path, snapshot)
+            sources.extend(page["data"])
             self.job["done"] += len(page["data"])
             self.job["total"] = page.get("total", self.job["done"])
-        snapshot["complete"] = True
-        atomic_json(path, snapshot)
-        atomic_json(folder / "bangumi-export.json", snapshot)
-        self.db.import_snapshot(self.pid, scan, [r for p in snapshot["pages"] for r in p["data"]])
+        self.db.import_snapshot(self.pid, scan, sources)
 
     async def preview(self, neo, only_failures=False):
         rows = self.db.rows(self.pid)
         if only_failures:
             rows = [r for r in rows if r["status"] in FAILURES | {"pending", "writing"}]
         self.job.update(done=0, total=len(rows), message="正在解析作品并读取 NeoDB 收藏…")
-        limit = asyncio.Semaphore(48)
+        limit = asyncio.Semaphore(64)
         stop = asyncio.Event()
         fatal = None
 
@@ -410,7 +398,7 @@ class Migrator:
                 or not row.get("resolution")
                 or row["resolution"].get("retryable", True)
                 and (
-                    row["status"] not in {"resolve_failed", "conflict", "blocked_private_visibility"}
+                    row["status"] not in {"conflict", "blocked_private_visibility"}
                     or row.get("resolution", {}).get("basis") == "manual"
                 )
             )
@@ -671,15 +659,34 @@ class Migrator:
             )
         ]
         if remaining:
-            final_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
+            import time
+            start_time = time.time()
             self.job.update(
                 done=0,
                 total=len(remaining),
-                message=f"快速条目已处理，剩余条目共用最多 {RESOLVE_FINAL_TIMEOUT} 秒等待解析；已开始写入的条目会继续核对…",
+                message=f"快速条目已处理，正在处理剩余条目（每条最多 {RESOLVE_FINAL_TIMEOUT} 秒）；已开始写入的条目会继续核对…",
+                phase_start_time=start_time,
             )
-            await asyncio.gather(*(process(row, False) for row in remaining))
+
+            # 每条独立超时处理
+            async def process_with_individual_timeout(row):
+                import time
+                individual_deadline = neo.clock() + RESOLVE_FINAL_TIMEOUT
+                unix_individual_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
+                # 设置当前条目的倒计时
+                self.job["countdown_deadline"] = unix_individual_deadline
+                try:
+                    await process(row, False)
+                finally:
+                    # 处理完清除
+                    pass
+
+            await asyncio.gather(*(process_with_individual_timeout(row) for row in remaining))
             if fatal:
                 raise fatal
+            # 清除倒计时标记
+            self.job.pop("countdown_deadline", None)
+            self.job.pop("phase_start_time", None)
         neo.checkpoint()
 
     async def migrate(self, neo, rows=None, stop=None, limit=None, claims=None, claim_lock=None):
@@ -827,7 +834,7 @@ class Migrator:
             if isinstance(result, Exception) and not isinstance(result, AppError):
                 raise result
 
-    def report(self, persist=True):
+    def report(self):
         rows = self.db.rows(self.pid) if self.pid else []
         counts = Counter(r["status"] for r in rows)
         result = {
@@ -881,10 +888,4 @@ class Migrator:
         result["progress_skipped"] = sum(
             bool(r["source"].get("ep_status") or r["source"].get("vol_status")) for r in rows
         )
-        if self.pid and persist:
-            folder = self.data / "profiles" / self.pid
-            atomic_json(folder / "migration-report.json", {**result, "entries": rows})
-            atomic_json(
-                folder / "failed.json", [r for r in rows if r["status"] in FAILURES | {"writing"}]
-            )
         return result

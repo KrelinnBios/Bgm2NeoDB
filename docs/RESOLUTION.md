@@ -34,7 +34,7 @@
 
 `entries` 以兼容旧数据库的方式增加两个可空 JSON 列：
 
-- `subject_detail`：Bangumi 详情缓存；重新扫描时失效，原始收藏快照保持独立。
+- `subject_detail`：Bangumi 详情缓存；重新扫描时失效，收藏原文保存在当前扫描记录中。
 - `resolution`：`code`、`message`、`retryable`、`basis`、`candidates`、`item`，以及检查时间与查询标题等补充信息。
 
 人工确认用 `basis=manual` 标识，重新扫描保留其映射依据。候选持久化在本地，页面重新打开无需再次访问外部站点即可查看。

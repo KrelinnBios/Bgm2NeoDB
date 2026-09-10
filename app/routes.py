@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -97,7 +97,8 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
                 return JSONResponse({"error": "请求格式错误。"}, status_code=400)
         response = await call_next(request)
         csp_nonce = getattr(request.state, "csp_nonce", None)
-        csp = f"default-src 'self'; script-src 'self'{f\" 'nonce-{csp_nonce}'\" if csp_nonce else ''}; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        nonce_part = f" 'nonce-{csp_nonce}'" if csp_nonce else ""
+        csp = f"default-src 'self'; script-src 'self'{nonce_part}; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         response.headers.update(
             {
                 "Cache-Control": "no-store",
@@ -144,7 +145,7 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
             "neodb": {"user": neo["user"], "instance": neo["instance"]} if neo else None,
             "warning": store.warning,
             "job": engine.job,
-            "summary": engine.report(persist=False),
+            "summary": engine.report(),
             "has_snapshot": bool(engine.pid and engine.db.profile(engine.pid)["export_complete"]),
         }
 
@@ -382,22 +383,6 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
             },
         )
         return {"ok": True}
-
-    @app.get("/api/export/{kind}")
-    async def export(kind: str):
-        names = {
-            "report": "migration-report.json",
-            "failed": "failed.json",
-            "source": "bangumi-export.json",
-        }
-        if kind not in names or not engine.pid:
-            raise AppError("当前没有可导出的记录。")
-        path = data / "profiles" / engine.pid / names[kind]
-        if kind != "source":
-            engine.report()
-        if not path.exists():
-            raise AppError("请先完成一次扫描。")
-        return FileResponse(path, filename=names[kind], media_type="application/json")
 
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
     return app

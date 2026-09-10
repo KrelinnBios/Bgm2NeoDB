@@ -86,7 +86,9 @@ async def test_connect_scan_preview_migrate_web_workflow(web):
     assert (await client.post("/api/jobs/migrate", json={}, headers=headers)).status_code == 200
     await app.state.engine.task
     assert (await client.get("/api/state")).json()["summary"]["migrated"] == 1
-    assert (await client.get("/api/export/report")).status_code == 200
+    assert (await client.get("/api/export/report")).status_code == 404
+    assert (await client.get("/api/export/failed")).status_code == 404
+    assert (await client.get("/api/export/source")).status_code == 404
 
 
 async def test_each_status_has_separate_count_and_filter(web):
@@ -112,7 +114,7 @@ async def test_each_status_has_separate_count_and_filter(web):
     )
     for sid, status in enumerate(statuses, 1):
         engine.db.update(engine.pid, sid, status=status)
-    summary = engine.report(persist=False)
+    summary = engine.report()
     assert sum(summary[status] for status in statuses) == summary["total"] == 10
     for sid, status in enumerate(statuses, 1):
         result = (await client.get("/api/entries", params={"filter": f"status:{status}"})).json()
@@ -125,7 +127,7 @@ async def test_each_status_has_separate_count_and_filter(web):
     assert (await client.get("/api/entries?filter=group:failed")).json()["total"] == 2
     assert (await client.get("/api/entries?filter=group:migrated")).json()["total"] == 1
     engine.db.update(engine.pid, 3, status="migrated")
-    assert engine.report(persist=False)["writing"] == 0
+    assert engine.report()["writing"] == 0
 
 
 def test_keyring_failure_does_not_fall_back_to_plaintext():
