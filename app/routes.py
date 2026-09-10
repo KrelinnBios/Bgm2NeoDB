@@ -97,7 +97,8 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
                 return JSONResponse({"error": "请求格式错误。"}, status_code=400)
         response = await call_next(request)
         csp_nonce = getattr(request.state, "csp_nonce", None)
-        csp = f"default-src 'self'; script-src 'self'{f\" 'nonce-{csp_nonce}'\" if csp_nonce else ''}; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        nonce_part = f" 'nonce-{csp_nonce}'" if csp_nonce else ""
+        csp = f"default-src 'self'; script-src 'self'{nonce_part}; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         response.headers.update(
             {
                 "Cache-Control": "no-store",
