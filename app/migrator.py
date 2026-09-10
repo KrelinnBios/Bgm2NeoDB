@@ -410,7 +410,8 @@ class Migrator:
                 or not row.get("resolution")
                 or row["resolution"].get("retryable", True)
                 and (
-                    row["status"] not in {"resolve_failed", "conflict", "blocked_private_visibility"}
+                    row["status"]
+                    not in {"resolve_failed", "conflict", "blocked_private_visibility"}
                     or row.get("resolution", {}).get("basis") == "manual"
                 )
             )
