@@ -745,12 +745,12 @@ async def test_auto_reaches_eight_writers_and_stops_queued_writes_on_failure(eng
 
     server.handler = handle
     await asyncio.wait_for(run(engine, "auto"), timeout=5)
-    assert peak == WRITE_CONCURRENCY == 8
-    assert len(started) == 8
+    assert peak == WRITE_CONCURRENCY == 10
+    assert len(started) == 10
     report = engine.report()
-    assert report["migrated"] == 7
+    assert report["migrated"] == 9
     assert report["partial"] == 1
-    assert report["ready"] + report["pending"] == 16
+    assert report["ready"] + report["pending"] == 14
     assert "已暂停" in engine.job["message"]
 
 
