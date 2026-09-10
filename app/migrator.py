@@ -660,6 +660,7 @@ class Migrator:
         ]
         if remaining:
             import time
+
             start_time = time.time()
             self.job.update(
                 done=0,
@@ -671,6 +672,7 @@ class Migrator:
             # 每条独立超时处理
             async def process_with_individual_timeout(row):
                 import time
+
                 unix_individual_deadline = time.time() + RESOLVE_FINAL_TIMEOUT
                 # 设置当前条目的倒计时
                 self.job["countdown_deadline"] = unix_individual_deadline

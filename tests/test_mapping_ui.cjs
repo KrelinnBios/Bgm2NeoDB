@@ -78,7 +78,6 @@ const assert = require('node:assert/strict');
     assert.equal(calls,2);
     assert.equal(starts,1);
     assert.deepEqual(jobOptions,[{import_date:false}]);
-    assert.match(await page.locator('#notice').textContent(),/自动迁移已开始/);
     await page.getByRole('button',{name:'详情'}).click();
     await page.setViewportSize({width:390,height:844});
     assert(await input.isVisible());

@@ -78,14 +78,18 @@ class Database:
                 # 检查条目是否已存在且已完成迁移
                 existing = db.execute(
                     "SELECT source, status FROM entries WHERE profile=? AND subject_id=?",
-                    (pid, source["subject_id"])
+                    (pid, source["subject_id"]),
                 ).fetchone()
 
-                if existing and existing["status"] == "migrated" and existing["source"] == source_json:
+                if (
+                    existing
+                    and existing["status"] == "migrated"
+                    and existing["source"] == source_json
+                ):
                     # 已完成且数据未变化，仅更新scan标记，保持migrated状态
                     db.execute(
                         "UPDATE entries SET scan=?, updated_at=? WHERE profile=? AND subject_id=?",
-                        (scan, now(), pid, source["subject_id"])
+                        (scan, now(), pid, source["subject_id"]),
                     )
                 else:
                     # 新条目或数据有变化，按原逻辑处理
