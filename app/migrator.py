@@ -427,6 +427,10 @@ class Migrator:
                 raise DeadlineExceeded(RESOLVE_FINAL_TIMEOUT) from None
 
         def resolution_timed_out(sid):
+            current_row = self.db.rows(self.pid, subject_id=sid)[0]
+            if current_row["status"] in ("writing", "migrated"):
+                return  # Don't overwrite status for items that have started writing
+
             result = dict(self._resolutions.get(sid) or {})
             result.update(
                 code="fetch_timeout",

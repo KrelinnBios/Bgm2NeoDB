@@ -572,10 +572,11 @@ async def test_final_budget_does_not_cancel_started_write(engine, server, monkey
     import asyncio
     import time
 
-    monkeypatch.setattr("app.migrator.RESOLVE_FINAL_TIMEOUT", 0.05)
+    monkeypatch.setattr("app.migrator.RESOLVE_FINAL_TIMEOUT", 1.0)
     engine.select_profile()
     engine.db.import_snapshot(engine.pid, "budget", [collection(1), collection(2)])
     searches = {}
+    write_started = asyncio.Event()
 
     async def lookup(neo, source, exclude=()):
         sid = source["subject_id"]
@@ -595,12 +596,20 @@ async def test_final_budget_does_not_cancel_started_write(engine, server, monkey
         original_write = neo.write_shelf
 
         async def slow_write(item, payload):
-            await asyncio.sleep(0.1)
+            write_started.set()
+            await asyncio.sleep(1.1)
             return await original_write(item, payload)
 
         monkeypatch.setattr(neo, "resolve", resolve)
         monkeypatch.setattr(neo, "write_shelf", slow_write)
-        await asyncio.wait_for(engine.preview_and_migrate(neo), timeout=1)
+        task = asyncio.create_task(engine.preview_and_migrate(neo))
+        try:
+            await asyncio.wait_for(write_started.wait(), timeout=1)
+            await asyncio.wait_for(task, timeout=3)
+        finally:
+            if not task.done():
+                task.cancel()
+                await task
     rows = {row["subject_id"]: row for row in engine.db.rows(engine.pid)}
     assert rows[1]["status"] == "migrated"
     assert rows[2]["status"] == "resolve_failed"
