@@ -31,14 +31,16 @@ Bgm2NeoDB 是一个本地网页工具，用于将 Bangumi 收藏迁移到 NeoDB 
 
 ### Windows：双击启动
 
-首次使用先在项目目录执行一次安装（在 PowerShell 里运行）：
+首次使用直接双击项目根目录的 `start.bat`。脚本会自动创建项目专用的虚拟环境并安装依赖，首次运行可能需要等待一段时间。
+
+也可以手动安装（在 PowerShell 里运行）：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-之后**双击项目根目录的 `start.bat`** 即可启动。脚本会自动用虚拟环境运行，浏览器稍后自动打开网页，无需敲命令。
+之后双击项目根目录的 `start.bat` 即可启动，浏览器稍后自动打开网页，无需敲命令。
 
 ### 命令行启动
 

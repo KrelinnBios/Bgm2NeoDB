@@ -289,7 +289,10 @@ $("rescan").onclick=()=>action(async()=>{
   await api("/api/jobs/scan",{import_date:$("import-date").checked});page=1;
 });
 $("filter").onchange=()=>{updateStatusSelection();page=1;loadEntries().catch(e=>notice(e.message,true));};
-$("search").oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;loadEntries().catch(e=>notice(e.message,true));},250);};
+const searchInput=$("search"),clearSearch=$("clear-search");
+function updateSearchClear(){clearSearch.hidden=!searchInput.value;}
+searchInput.oninput=()=>{updateSearchClear();clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;loadEntries().catch(e=>notice(e.message,true));},250);};
+clearSearch.onclick=()=>{searchInput.value="";updateSearchClear();searchInput.dispatchEvent(new Event("input",{bubbles:true}));searchInput.focus();};
 $("prev").onclick=()=>{page--;loadEntries().catch(e=>notice(e.message,true));};$("next").onclick=()=>{page++;loadEntries().catch(e=>notice(e.message,true));};
 async function poll(){
   try{

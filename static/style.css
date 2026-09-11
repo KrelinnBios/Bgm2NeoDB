@@ -90,3 +90,18 @@ button.text-button:not(.close),.account button,.candidate-heading button,.candid
 /* Account actions use the same button rhythm as the rest of the interface. */
 .account button{padding:11px 18px;font-size:14px}
 .account{gap:8px}
+
+/* Replace the browser-specific search clear control with a consistent button. */
+input[type="search"]::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+  appearance:none;
+  display:none;
+}
+.search{position:relative}
+.search input{padding-right:40px}
+.search-clear{position:absolute;right:8px;top:50%;width:18px;height:18px;padding:0;border:0;border-radius:50%;background:var(--green);color:transparent;transform:translateY(-50%);transition:background .15s}
+.search-clear:hover{background:#194e40}
+.search-clear:focus-visible{outline:2px solid #65a285;outline-offset:2px}
+.search-clear::before,.search-clear::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:2px;border-radius:2px;background:#fff;transform:translate(-50%,-50%) rotate(45deg)}
+.search-clear::after{transform:translate(-50%,-50%) rotate(-45deg)}
+.search-clear[hidden]{display:none}
