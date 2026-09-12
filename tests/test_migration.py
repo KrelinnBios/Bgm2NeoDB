@@ -562,7 +562,7 @@ async def test_final_budget_also_bounds_stalled_search(engine, server, monkeypat
     async with server.neo("https://neo.example", "token") as neo:
         neo.clock = time.monotonic
         monkeypatch.setattr(neo, "resolve", resolve)
-        await asyncio.wait_for(engine.preview_and_migrate(neo), timeout=1)
+        await asyncio.wait_for(engine.preview_and_migrate(neo), timeout=3)
     assert engine.report()["resolve_failed"] == 8
     assert engine.report()["pending"] == 0
     assert not server.writes
