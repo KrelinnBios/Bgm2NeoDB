@@ -2,7 +2,6 @@ import argparse
 import socket
 import sys
 import threading
-import time
 import webbrowser
 
 from app.config import HOST, ORIGIN, PORT
@@ -14,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description="Bgm2NeoDB 本地收藏迁移工具")
     parser.add_argument("--no-browser", action="store_true", help="启动后不自动打开浏览器")
     args = parser.parse_args()
+    print("正在启动 Bgm2NeoDB，请稍候...", flush=True)
     try:
         import uvicorn
 
@@ -35,20 +35,30 @@ def main():
     server = uvicorn.Server(
         uvicorn.Config(create_app(), host=HOST, port=PORT, access_log=False, log_level="warning")
     )
+    stopped = threading.Event()
 
     def open_when_ready():
-        for _ in range(100):
+        while not stopped.is_set():
             if server.started:
-                webbrowser.open(ORIGIN)
+                print(
+                    f"Bgm2NeoDB 已启动：{ORIGIN}\n按 Ctrl+C 停止。迁移记录会保存在本机。",
+                    flush=True,
+                )
+                if not args.no_browser:
+                    try:
+                        opened = webbrowser.open(ORIGIN)
+                    except (webbrowser.Error, OSError):
+                        opened = False
+                    if not opened:
+                        print(f"未能自动打开浏览器，请手动访问：{ORIGIN}", flush=True)
                 return
-            time.sleep(0.1)
+            stopped.wait(0.1)
 
-    if not args.no_browser:
-        threading.Thread(target=open_when_ready, daemon=True).start()
-    print(f"Bgm2NeoDB 已启动：{ORIGIN}\n按 Ctrl+C 停止。迁移记录会保存在本机。", flush=True)
+    threading.Thread(target=open_when_ready, daemon=True).start()
     try:
         server.run(sockets=[sock])
     finally:
+        stopped.set()
         sock.close()
     return 0
 
