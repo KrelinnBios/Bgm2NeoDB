@@ -240,20 +240,16 @@ async function refresh(force=false){
   $("rescan").title=running?"请先暂停当前任务，再重新扫描":"重新读取 Bangumi 收藏并迁移";
   $("workspace-title").textContent=running?"正在处理你的收藏":state.has_snapshot?"查看迁移进度与结果":connected?"账号已连接，开始自动迁移":"连接账号后，扫描你的收藏";
   $("progress-box").hidden=!running&&!state.job.message;
-  // 处理倒计时和总用时
+  // 处理倒计时
   if(state.job.countdown_deadline){
     if(!countdownInterval){
       countdownInterval=setInterval(()=>{
         const remaining=Math.max(0,Math.ceil(state.job.countdown_deadline-Date.now()/1000));
-        const elapsed=state.job.phase_start_time?Math.floor(Date.now()/1000-state.job.phase_start_time):0;
-        const elapsedText=elapsed>0?` · 总用时 ${elapsed} 秒`:"";
-        $("job-label").textContent=`快速条目已处理，正在处理剩余条目（当前条目剩余 ${remaining} 秒${elapsedText}）；已开始写入的条目会继续核对…`;
+        $("job-label").textContent=`快速条目已处理，正在处理剩余条目（剩余 ${remaining} 秒）；已开始写入的条目会继续核对…`;
       },1000);
     }
     const remaining=Math.max(0,Math.ceil(state.job.countdown_deadline-Date.now()/1000));
-    const elapsed=state.job.phase_start_time?Math.floor(Date.now()/1000-state.job.phase_start_time):0;
-    const elapsedText=elapsed>0?` · 总用时 ${elapsed} 秒`:"";
-    $("job-label").textContent=`快速条目已处理，正在处理剩余条目（当前条目剩余 ${remaining} 秒${elapsedText}）；已开始写入的条目会继续核对…`;
+    $("job-label").textContent=`快速条目已处理，正在处理剩余条目（剩余 ${remaining} 秒）；已开始写入的条目会继续核对…`;
   }else{
     if(countdownInterval){clearInterval(countdownInterval);countdownInterval=null;}
     $("job-label").textContent=state.job.message||"自动迁移中";
