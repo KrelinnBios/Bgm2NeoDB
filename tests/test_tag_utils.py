@@ -1,6 +1,5 @@
-import pytest
 
-from app.tag_utils import normalize_tag_key, merge_tags
+from app.tag_utils import merge_tags, normalize_tag_key
 
 
 class TestNormalizeTagKey:
