@@ -182,7 +182,10 @@ function detail(row){
         })()]);
         if(Date.now()>=deadline)throw new Error("等待已满 60 秒，已停止自动重试。");
       }catch(error){
-        throw new Error(`${controller.signal.aborted?"等待已满 60 秒，已停止自动重试。":error.message} 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。`);
+        const isTimeout=controller.signal.aborted;
+        const message=isTimeout?"等待已满 60 秒，已停止自动重试。":error.message;
+        const suffix=isTimeout?" 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。":"";
+        throw new Error(message+suffix);
       }finally{
         clearTimeout(timeout);clearTimeout(retryTimer);clearInterval(countdown);
       }
