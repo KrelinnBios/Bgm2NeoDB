@@ -27,8 +27,7 @@ def normalized_title(text):
     # NFD 分解：将 é 分解为 e + 组合音调符号
     # 然后过滤掉所有组合字符（Mn = Mark, Nonspacing）
     text = "".join(
-        char for char in unicodedata.normalize("NFD", text)
-        if unicodedata.category(char) != "Mn"
+        char for char in unicodedata.normalize("NFD", text) if unicodedata.category(char) != "Mn"
     )
     return "".join(text.split()).casefold()
 

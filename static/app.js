@@ -184,7 +184,8 @@ function detail(row){
       }catch(error){
         const isTimeout=controller.signal.aborted;
         const message=isTimeout?"等待已满 60 秒，已停止自动重试。":error.message;
-        const suffix=isTimeout?" 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。":"";
+        const needsManualCreation=isTimeout||/不支持该来源|链接格式不正确/.test(error.message);
+        const suffix=needsManualCreation?" 请在 NeoDB 手动创建该条目，再粘贴 NeoDB 条目链接。":"";
         throw new Error(message+suffix);
       }finally{
         clearTimeout(timeout);clearTimeout(retryTimer);clearInterval(countdown);
