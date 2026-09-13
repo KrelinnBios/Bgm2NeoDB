@@ -524,21 +524,29 @@ async def test_inflight_success_finishes_verification_when_another_write_fails(e
     assert "已暂停" in engine.job["message"]
 
 
-async def test_auth_error_during_quick_resolution_stops_without_loop(engine, server):
+@pytest.mark.parametrize("status", [401, 403])
+async def test_auth_error_during_quick_resolution_stops_without_loop(engine, server, status):
     import asyncio
 
     import httpx
 
     original = server.handler
+    fetches = 0
 
     def handle(request):
+        nonlocal fetches
         if request.url.path == "/api/catalog/fetch":
-            return httpx.Response(401)
+            fetches += 1
+            return httpx.Response(status)
         return original(request)
 
     server.handler = handle
-    await asyncio.wait_for(run(engine, "auto"), timeout=3)
+    engine.start("auto")
+    done, pending = await asyncio.wait({engine.task}, timeout=30)
+    assert not pending, "认证失败后迁移任务未按时结束"
+    await asyncio.gather(*done)
     assert not server.writes
+    assert fetches == 1
     assert "登录已失效" in engine.job["message"]
 
 
