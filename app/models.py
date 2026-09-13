@@ -1,3 +1,4 @@
+import unicodedata
 from copy import deepcopy
 
 from app.errors import AppError
@@ -15,8 +16,20 @@ def bangumi_url(subject_id):
 
 
 def normalized_title(text):
+    """规范化标题用于匹配。
+
+    1. 移除 Unicode 音调符号（é → e, ñ → n 等）
+    2. 移除所有空格
+    3. 转小写
+    """
     if not isinstance(text, str):
         return ""
+    # NFD 分解：将 é 分解为 e + 组合音调符号
+    # 然后过滤掉所有组合字符（Mn = Mark, Nonspacing）
+    text = "".join(
+        char for char in unicodedata.normalize("NFD", text)
+        if unicodedata.category(char) != "Mn"
+    )
     return "".join(text.split()).casefold()
 
 

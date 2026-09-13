@@ -85,7 +85,7 @@ class Migrator:
 
     def assert_idle(self):
         if self.task and not self.task.done():
-            raise AppError("当前操作仍在进行，请先暂停或等待完成。")
+            raise AppError("正在处理上一项操作，请稍候再试。")
 
     def start(self, kind, import_date=True):
         self.assert_idle()
