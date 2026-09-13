@@ -41,6 +41,8 @@ class NeoDB(APIClient):
         self._next_fetch = 0
         self._fetch_retry_at = {}
         self.last_fetch_retry_after = 15.0
+        self._tag_gate = asyncio.Lock()
+        self._tag_names = None
 
     async def me(self):
         user = response_json(await self.request("GET", "/api/me"))
@@ -68,10 +70,64 @@ class NeoDB(APIClient):
                 raise KeyError()
             if fields["visibility"].get("maximum") != 2:
                 raise KeyError()
-            if "/api/catalog/fetch" not in schema["paths"] or "get" not in path:
+            if (
+                "/api/catalog/fetch" not in schema["paths"]
+                or "get" not in path
+                or "get" not in schema["paths"]["/api/me/tag/"]
+            ):
                 raise KeyError()
         except (KeyError, TypeError):
-            raise AppError("此 NeoDB 实例的收藏接口不兼容，已停止迁移。") from None
+            raise AppError("此 NeoDB 实例的收藏或标签接口不兼容，已停止迁移。") from None
+
+    async def tag_names(self):
+        async with self._tag_gate:
+            if self._tag_names is not None:
+                return self._tag_names
+            names, seen = {}, set()
+            page, expected = 1, None
+            while True:
+                payload = response_json(
+                    await self.request("GET", "/api/me/tag/", params={"page": page})
+                )
+                data, pages, count = (payload.get(k) for k in ("data", "pages", "count"))
+                if (
+                    not isinstance(data, list)
+                    or type(pages) is not int
+                    or type(count) is not int
+                    or pages < 0
+                    or count < 0
+                    or pages == 0
+                    and count != 0
+                ):
+                    raise AppError("NeoDB 标签列表格式不正确，已停止迁移。")
+                if expected is not None and expected != (pages, count):
+                    raise AppError("NeoDB 标签列表在读取期间发生变化，请重试。")
+                expected = (pages, count)
+                for tag in data:
+                    if not isinstance(tag, dict):
+                        raise AppError("NeoDB 标签数据格式不正确。")
+                    uid, title = tag.get("uuid"), tag.get("title")
+                    if (
+                        not isinstance(uid, str)
+                        or not uid
+                        or not isinstance(title, str)
+                        or not title.strip()
+                    ):
+                        raise AppError("NeoDB 标签缺少有效的编号或名称。")
+                    if uid in seen:
+                        raise AppError("NeoDB 标签分页包含重复数据，请重试。")
+                    seen.add(uid)
+                    title = title.strip()
+                    key = title.casefold()
+                    names.setdefault(key, title)
+                if len(seen) > count or (not data and page < pages):
+                    raise AppError("NeoDB 标签列表不完整，已停止迁移，请重试。")
+                if page >= pages:
+                    if len(seen) != count:
+                        raise AppError("NeoDB 标签列表不完整，已停止迁移，请重试。")
+                    self._tag_names = names
+                    return names
+                page += 1
 
     def parse_item(self, data):
         uid = item_uuid(data.get("uuid"))

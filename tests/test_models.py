@@ -75,6 +75,52 @@ def test_tags_deduplicated_without_renaming(source):
     ]
 
 
+@pytest.mark.parametrize(
+    "existing,incoming,expected",
+    [
+        (["Web"], ["WEB", " web "], ["Web"]),
+        (["动画"], [" 动画 ", "动画"], ["动画"]),
+        (["原标签", "Web"], ["WEB", "新标签"], ["Web", "原标签", "新标签"]),
+        ([], ["Web", "WEB", "web"], ["Web"]),
+        (["Android"], ["Andriod"], ["Android", "Andriod"]),
+        (["WEB", "Web"], ["web"], ["WEB"]),
+    ],
+)
+def test_tag_merge_ignores_case_and_preserves_target_spelling(source, existing, incoming, expected):
+    source["tags"] = incoming
+    assert plan_collection(source, mark(tags=existing))["payload"]["tags"] == expected
+
+
+def test_tag_merge_reuses_account_tags_from_other_items(source):
+    source["tags"] = ["WEB", "android"]
+    names = {"web": "Web", "android": "Android"}
+    plan = plan_collection(source, None, tag_names=names)
+    assert plan["payload"]["tags"] == ["Web", "Android"]
+    assert source["tags"] == ["WEB", "android"]
+
+
+def test_tag_merge_prefers_current_item_over_account_variant(source):
+    source["tags"] = ["WEB"]
+    plan = plan_collection(source, mark(tags=["Web"]), tag_names={"web": "WEB"})
+    assert plan["payload"]["tags"] == ["Web"]
+
+
+def test_new_tags_share_spelling_within_batch(source):
+    names = {"web": "Web"}
+    first = plan_collection({**source, "tags": ["Web"]}, None, tag_names=names)
+    second = plan_collection({**source, "tags": ["WEB"]}, None, tag_names=names)
+    assert first["payload"]["tags"] == second["payload"]["tags"] == ["Web"]
+
+
+def test_tag_readback_does_not_hide_case_duplicates(source):
+    source["tags"] = ["Web"]
+    plan = plan_collection(source, None)
+    duplicate = {**plan["payload"], "tags": ["Web", "WEB"]}
+    assert normalized_mark(duplicate) != plan["after"]
+    cleanup = plan_collection(source, mark(tags=["WEB", "Web"]))
+    assert cleanup["diff"]["tags"] == {"before": ["WEB", "Web"], "after": ["WEB"]}
+
+
 def test_private_and_more_restrictive_target_protected(source):
     source["private"] = True
     assert plan_collection(source, None)["payload"]["visibility"] == 2

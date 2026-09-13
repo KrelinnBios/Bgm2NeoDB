@@ -156,6 +156,85 @@ async def test_existing_target_fields_privacy_and_date_survive(engine, server):
     assert not target["post_to_fediverse"]
 
 
+@pytest.mark.parametrize("mode", ["migrate", "auto"])
+async def test_tag_merge_reuses_existing_spelling_and_verifies(engine, server, mode):
+    uid = catalog_item()["uuid"]
+    server.sources[0]["tags"] = ["WEB", " web ", "动画", "新标签"]
+    server.marks[uid] = mark(tags=["Web", "动画"])
+    await run(engine, "prepare")
+    await run(engine, mode)
+    assert server.marks[uid]["tags"] == ["Web", "动画", "新标签"]
+    assert engine.report()["migrated"] == 1
+
+
+async def test_tag_on_another_item_is_reused(engine, server):
+    other_uid = catalog_item(2)["uuid"]
+    server.marks[other_uid] = mark(2, tags=["Web", "Android"])
+    original = dict(server.marks[other_uid])
+    server.sources[0]["tags"] = ["WEB", "ANDROID"]
+    await run(engine, "auto")
+    assert server.marks[catalog_item()["uuid"]]["tags"] == ["Web", "Android"]
+    assert server.marks[other_uid] == original
+    assert engine.report()["migrated"] == 1
+
+
+async def test_concurrent_items_share_new_tag_spelling(engine, server):
+    server.sources = [collection(1, tags=["Web"]), collection(2, tags=["WEB"])]
+    await run(engine, "auto")
+    tags = [server.marks[catalog_item(sid)["uuid"]]["tags"] for sid in (1, 2)]
+    assert tags[0] == tags[1] == ["Web"]
+    assert engine.report()["migrated"] == 2
+    assert sum(r.url.path == "/api/me/tag/" for r in server.requests) == 1
+
+
+async def test_saved_plan_preserves_new_tag_spelling_after_restart(engine, server):
+    server.sources = [collection(1, tags=["Web"]), collection(2, tags=["WEB"])]
+    await run(engine, "prepare")
+    row = engine.db.rows(engine.pid, subject_id=2)[0]
+    async with server.neo("https://neo.example") as neo:
+        await engine.migrate(neo, rows=[row])
+    assert server.marks[catalog_item(2)["uuid"]]["tags"] == ["Web"]
+    assert engine.report()["migrated"] == 1
+
+
+async def test_case_duplicates_in_readback_are_not_success(engine, server):
+    server.sources[0]["tags"] = ["Web"]
+    await run(engine, "prepare")
+    server.after_write = lambda target: target.update(tags=["Web", "WEB"])
+    await run(engine, "migrate")
+    assert engine.report()["partial"] == 1
+    assert engine.report()["migrated"] == 0
+
+
+async def test_tag_catalog_change_requires_new_preview_before_write(engine, server):
+    server.sources[0]["tags"] = ["Web"]
+    await run(engine, "prepare")
+    server.tags = ["WEB"]
+    await run(engine, "migrate")
+    assert not server.writes
+    assert engine.report()["conflict"] == 1
+    await run(engine, "auto")
+    assert server.marks[catalog_item()["uuid"]]["tags"] == ["WEB"]
+    assert engine.report()["migrated"] == 1
+
+
+async def test_incomplete_tag_catalog_stops_before_writing(engine, server):
+    import httpx
+
+    original = server.handler
+
+    def handler(request):
+        if request.url.path == "/api/me/tag/":
+            return httpx.Response(200, json={"data": [], "pages": 2, "count": 101})
+        return original(request)
+
+    server.handler = handler
+    await run(engine, "auto")
+    assert not server.writes
+    assert engine.report()["migrated"] == 0
+    assert "标签" in engine.job["message"]
+
+
 async def test_preview_staleness_blocks_overwrite(engine, server):
     await run(engine, "prepare")
     server.marks[catalog_item()["uuid"]] = mark(comment_text="刚修改")

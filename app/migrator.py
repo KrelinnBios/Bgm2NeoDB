@@ -60,6 +60,16 @@ class Migrator:
         bgm, neo = self.credentials.get("bangumi"), self.credentials.get("neodb")
         return bgm, neo
 
+    @staticmethod
+    def reserve_tag_names(tag_names, rows):
+        for row in rows:
+            for tag in row["source"].get("tags", []):
+                if not isinstance(tag, str) or not tag.strip():
+                    continue
+                tag = tag.strip()
+                key = tag.casefold()
+                tag_names.setdefault(key, tag)
+
     def select_profile(self):
         bgm, neo = self.accounts()
         if not bgm or not neo:
@@ -194,6 +204,8 @@ class Migrator:
         rows = self.db.rows(self.pid)
         if only_failures:
             rows = [r for r in rows if r["status"] in FAILURES | {"pending", "writing"}]
+        tag_names = await neo.tag_names() if rows else {}
+        self.reserve_tag_names(tag_names, rows)
         self.job.update(done=0, total=len(rows), message="正在解析作品并读取 NeoDB 收藏…")
         limit = asyncio.Semaphore(64)
         stop = asyncio.Event()
@@ -226,7 +238,7 @@ class Migrator:
                     self.db.update(self.pid, sid, item=item)
                     stage = "preview"
                     item, current = await neo.shelf(item)
-                    plan = plan_collection(source, current, self.import_date)
+                    plan = plan_collection(source, current, self.import_date, tag_names=tag_names)
                     status = "ready"
                     self.db.update(
                         self.pid, sid, item=item, plan=plan, status=status, stage="", error=""
@@ -403,6 +415,8 @@ class Migrator:
                 )
             )
         ]
+        tag_names = await neo.tag_names() if rows else {}
+        self.reserve_tag_names(tag_names, rows)
         deferred = {row["subject_id"] for row in rows if row["status"] in FAILURES}
         first = rows
         first.sort(key=lambda row: not bool(row["item"]))
@@ -619,7 +633,7 @@ class Migrator:
                             error="作品合并后需要重新确认对应的作品或版本。",
                         )
                         return
-                    plan = plan_collection(source, current, self.import_date)
+                    plan = plan_collection(source, current, self.import_date, tag_names=tag_names)
                     self.db.update(
                         self.pid, sid, item=item, plan=plan, status="ready", stage="", error=""
                     )
@@ -693,6 +707,12 @@ class Migrator:
             self.block_collisions()
             rows = [r for r in self.db.rows(self.pid) if r["status"] in {"ready", "skipped"}]
             self.job.update(done=0, total=len(rows), message="正在迁移，每项写入后都会核对结果…")
+        tag_names = await neo.tag_names() if rows else {}
+        # Saved previews may have reserved names that have not been written yet.
+        for row in rows:
+            for tag in row["plan"]["after"]["tags"]:
+                tag_names.setdefault(tag.casefold(), tag)
+        self.reserve_tag_names(tag_names, rows)
         limit = limit if limit is not None else asyncio.Semaphore(WRITE_CONCURRENCY)
         stop = stop if stop is not None else asyncio.Event()
         fatal = None
@@ -756,7 +776,20 @@ class Migrator:
                             fatal = AppError("NeoDB 数据在检查后发生变化，自动迁移已暂停。")
                             stop.set()
                             raise fatal
-                        fresh = plan_collection(row["source"], current, self.import_date)
+                        fresh = plan_collection(
+                            row["source"], current, self.import_date, tag_names=tag_names
+                        )
+                        if fresh["after"] != plan["after"]:
+                            self.db.update(
+                                self.pid,
+                                sid,
+                                status="conflict",
+                                stage="read",
+                                error="标签合并结果与预览不同，请重新预览后确认。",
+                            )
+                            fatal = AppError("标签合并结果已变化，自动迁移已暂停，请重新预览。")
+                            stop.set()
+                            raise fatal
                         if stop.is_set():
                             self.db.update(self.pid, sid, status="ready", stage="", error="")
                             return

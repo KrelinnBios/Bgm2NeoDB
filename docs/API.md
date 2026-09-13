@@ -22,6 +22,7 @@
 - 本工具没有直接创建 NeoDB 条目的接口调用，也不会提交自定义标题、类型或简介来创建条目；外部链接只作为 `catalog/fetch` 的参数交给目标实例处理。目标实例是否能抓取或创建，取决于它支持的来源和自身权限。
 - [官方 shelf 实现](https://github.com/neodb-social/neodb/blob/main/neodb/journal/apis/shelf.py)。`GET /api/me/shelf/item/{item_uuid}` 读取当前收藏；同路径 POST 一次写入 `shelf_type`、`visibility`、`rating_grade`、`comment_text`、`tags`，而不是虚构多个独立评分／短评接口。**省略评分、短评或标签会清空它们**，因此显式回填应保留的现有值。
 - [官方可见性定义](https://github.com/neodb-social/neodb/blob/main/neodb/journal/models/common.py)：0 公开、1 关注者、2 私密；本工具不降低已有可见性，且 `post_to_fediverse=false`。
+- [官方标签接口](https://github.com/neodb-social/neodb/blob/main/neodb/journal/apis/tag.py)：`GET /api/me/tag/` 分页读取当前账号已有标签。迁移会先完整读取标签名称，按不区分大小写建立 NeoDB 写法映射，再与当前收藏的标签合并；列表分页不完整或在读取期间变化时停止写入。
 - [官方进度模型](https://github.com/neodb-social/neodb/blob/main/neodb/journal/models/mark.py)：虽然存在独立进度接口，但允许的进度类型由实际 catalog item 决定。当前版本不猜测条目对应关系，进度仅存档。
 
 连接及每次任务开始时读取目标实例当前 OpenAPI，确认必要写入字段与可见性范围仍可用。若结构不兼容，阻止迁移；不会猜测替代字段。

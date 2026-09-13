@@ -96,7 +96,7 @@ def normalized_mark(mark):
     }
 
 
-def plan_collection(source, current, import_date=True):
+def plan_collection(source, current, import_date=True, *, tag_names=None):
     status = source.get("type")
     if type(status) is not int or status not in STATUS_MAP:
         raise AppError("未知 Bangumi 收藏状态，无法迁移。")
@@ -125,8 +125,18 @@ def plan_collection(source, current, import_date=True):
         payload["rating_grade"] = rating
     if comment:
         payload["comment_text"] = comment
-    # Keep target-only tags; migration must not destroy existing user data.
-    payload["tags"] = clean_tags(payload["tags"] + tags)
+    # NeoDB's existing spelling wins; the shared map keeps this choice stable
+    # for all rows in the same migration batch.
+    tag_names = {} if tag_names is None else tag_names
+    merged_tags = {}
+    for tag in payload["tags"]:
+        key = tag.casefold()
+        merged_tags.setdefault(key, tag)
+    for tag in tags:
+        key = tag.casefold()
+        canonical = tag_names.setdefault(key, tag)
+        merged_tags.setdefault(key, canonical)
+    payload["tags"] = list(merged_tags.values())
     payload["post_to_fediverse"] = False
     if current and current.get("created_time"):
         payload["created_time"] = current["created_time"]

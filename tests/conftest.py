@@ -83,6 +83,7 @@ class FakeServer:
     def __init__(self):
         self.sources = [collection()]
         self.marks = {}
+        self.tags = []
         self.requests = []
         self.writes = []
         self.clock = Clock()
@@ -128,6 +129,24 @@ class FakeServer:
             )
         if path == "/api/openapi.json":
             return httpx.Response(200, json=SCHEMA)
+        if path == "/api/me/tag/":
+            titles = list(
+                dict.fromkeys(self.tags + [t for m in self.marks.values() for t in m["tags"]])
+            )
+            size = 100
+            offset = (int(request.url.params.get("page", "1")) - 1) * size
+            data = [
+                {"uuid": f"tag-{i}", "title": title, "visibility": 0}
+                for i, title in enumerate(titles)
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "data": data[offset : offset + size],
+                    "pages": (len(data) + size - 1) // size,
+                    "count": len(data),
+                },
+            )
         if path == "/api/catalog/fetch":
             source_url = request.url.params["url"]
             if urlsplit(source_url).hostname == "neo.example":
