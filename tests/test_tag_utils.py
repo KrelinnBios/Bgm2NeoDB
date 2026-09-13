@@ -84,8 +84,9 @@ class TestMergeTags:
         )
         # "android" 和 "ANDROID" 合并，使用已有的 "ANDROID"
         assert result["android"] == "ANDROID"
-        # "Andriod" 是拼写错误，不会自动合并到 "Android"
-        assert "andriod" in result
+        # "Andriod" 是拼写错误，会通过模糊匹配自动合并到 "Android"
+        # 所以最终只有一个 "android" 键
+        assert len(result) == 1
 
     def test_empty_tags_ignored(self):
         """忽略空标签"""

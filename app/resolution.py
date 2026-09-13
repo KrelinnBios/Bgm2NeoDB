@@ -57,11 +57,10 @@ def choose(candidates, titles, types, sid, exclude=(), complete=True):
     """从候选列表中选择最佳匹配。
 
     优先级：
-    1. 有 Bangumi 外链的（linked）
-    2. 标题完全匹配的（exact）
-    3. 如果只有一个候选且搜索完整，也可以匹配
+    1. 有 Bangumi 外链的（linked）- 即使搜索不完整也可以匹配
+    2. 标题完全匹配的（exact）- 需要搜索完整
 
-    改进：即使搜索不完整，如果找到明确匹配也返回
+    改进：有外链匹配时忽略完整性检查，解决部分"重启后成功"的问题
     """
     candidates = list({item["uuid"]: item for item in candidates}.values())
     typed = [
@@ -72,6 +71,31 @@ def choose(candidates, titles, types, sid, exclude=(), complete=True):
         for item in typed
         if any(source_id(ref.get("url")) == sid for ref in item.get("external_resources", []))
     ]
+
+    # 有外链匹配时，即使搜索不完整也可以返回
+    if len(linked) == 1:
+        if linked[0]["uuid"] in set(exclude):
+            return decision("ambiguous", "请确认要使用的作品或版本。", candidates)
+        return decision(
+            "matched",
+            "已确认对应作品。",
+            candidates,
+            item=linked[0],
+            basis="source_url",
+        )
+
+    if len(linked) > 1:
+        return decision("ambiguous", "存在多个匹配候选，请确认具体作品或版本。", candidates)
+
+    # 标题匹配需要搜索完整
+    if not complete:
+        return decision(
+            "incomplete",
+            "搜索结果尚未完整返回，系统不会自动选择，请从候选中确认或重新查找。",
+            candidates,
+            retryable=True,
+        )
+
     wanted = set().union(*(title_keys(title) for title in titles))
     exact = [
         item
@@ -83,31 +107,19 @@ def choose(candidates, titles, types, sid, exclude=(), complete=True):
             for ref in item.get("external_resources", [])
         )
     ]
-    matches = linked or exact
 
-    # 改进：如果有明确的匹配（linked 或 exact），即使搜索不完整也返回
-    # 这解决了"重启后可以成功"的问题 - 其实第一次就有正确候选，只是因为 complete=False 被拒绝了
-    if len(matches) == 1:
-        if matches[0]["uuid"] in set(exclude):
+    if len(exact) > 1:
+        return decision("ambiguous", "存在多个匹配候选，请确认具体作品或版本。", candidates)
+
+    if len(exact) == 1:
+        if exact[0]["uuid"] in set(exclude):
             return decision("ambiguous", "请确认要使用的作品或版本。", candidates)
         return decision(
             "matched",
             "已确认对应作品。",
             candidates,
-            item=matches[0],
-            basis="source_url" if linked else "exact_title",
-        )
-
-    if len(matches) > 1:
-        return decision("ambiguous", "存在多个匹配候选，请确认具体作品或版本。", candidates)
-
-    # 只有在没有任何匹配时，才检查完整性
-    if not complete:
-        return decision(
-            "incomplete",
-            "搜索结果尚未完整返回，系统不会自动选择，请从候选中确认或重新查找。",
-            candidates,
-            retryable=True,  # 标记为可重试
+            item=exact[0],
+            basis="exact_title",
         )
 
     return decision(
