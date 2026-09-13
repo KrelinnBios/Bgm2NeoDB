@@ -1,11 +1,12 @@
 # Bgm2NeoDB
 
 <p align="center">
-  <strong>迁移 · 本地运行</strong><br>
+  <strong>迁移 · 本地运行 · 隐私优先</strong><br>
   将 Bangumi 收藏迁移到 NeoDB 的本地网页工具
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-127.0.0.1:8765-2f6f73?style=flat-square" alt="本地运行">
   <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-Python%203.11%2B-247344?style=flat-square" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-1f5f9c?style=flat-square" alt="MIT License">
 </p>
@@ -24,6 +25,12 @@ Bgm2NeoDB 是一个本地网页工具，用于将 Bangumi 收藏迁移到 NeoDB 
 - 批量迁移：高并发处理收藏状态、评分、短评、标签与可见性，按规则合并现有数据。
 - 失败处理：在迁移记录中查看失败原因并重试失败条目。
 - 暂停恢复：迁移任务可暂停与继续，已完成条目不重复处理。
+
+## 界面预览
+
+<p align="center">
+  <img src="docs/screenshots/interface-preview.png" width="80%" alt="Bgm2NeoDB 界面预览">
+</p>
 
 ## 安装与启动
 
