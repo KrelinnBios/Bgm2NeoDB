@@ -29,8 +29,8 @@ def title_keys(text):
 
     # 移除常见标点符号的版本
     text_no_punct = text
-    for punct in [':', '：', '/', '／', '·', '・', '~', '～', '-', '－', ' ']:
-        text_no_punct = text_no_punct.replace(punct, '')
+    for punct in [":", "：", "/", "／", "·", "・", "~", "～", "-", "－", " "]:
+        text_no_punct = text_no_punct.replace(punct, "")
     text_no_punct = text_no_punct.strip().casefold()
     if text_no_punct:
         keys.add(text_no_punct)

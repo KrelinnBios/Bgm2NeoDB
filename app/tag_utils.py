@@ -1,4 +1,5 @@
 """标签规范化和合并工具"""
+
 import unicodedata
 
 
@@ -25,13 +26,13 @@ def normalize_tag_key(tag):
 
     # 全角转半角
     # NFKC 会将全角字符转换为半角等价字符
-    tag = unicodedata.normalize('NFKC', tag)
+    tag = unicodedata.normalize("NFKC", tag)
 
     # 统一大小写
     tag = tag.casefold()
 
     # 合并多余空格（保留单个空格，因为"Web App"和"WebApp"可能是不同的标签）
-    tag = ' '.join(tag.split())
+    tag = " ".join(tag.split())
 
     return tag
 
@@ -64,17 +65,17 @@ def damerau_levenshtein_distance(s1, s2):
     # 计算距离
     for i in range(1, len1 + 1):
         for j in range(1, len2 + 1):
-            cost = 0 if s1[i-1] == s2[j-1] else 1
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
 
             d[i][j] = min(
-                d[i-1][j] + 1,      # 删除
-                d[i][j-1] + 1,      # 插入
-                d[i-1][j-1] + cost  # 替换
+                d[i - 1][j] + 1,  # 删除
+                d[i][j - 1] + 1,  # 插入
+                d[i - 1][j - 1] + cost,  # 替换
             )
 
             # 检查相邻字符交换
-            if i > 1 and j > 1 and s1[i-1] == s2[j-2] and s1[i-2] == s2[j-1]:
-                d[i][j] = min(d[i][j], d[i-2][j-2] + 1)  # 交换
+            if i > 1 and j > 1 and s1[i - 1] == s2[j - 2] and s1[i - 2] == s2[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)  # 交换
 
     return d[len1][len2]
 
