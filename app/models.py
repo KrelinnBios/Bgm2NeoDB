@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from app.errors import AppError
+from app.tag_utils import normalize_tag_key
 
 STATUS_MAP = {1: "wishlist", 2: "complete", 3: "progress", 4: "progress", 5: "dropped"}
 STATUS_LABELS = {1: "想看", 2: "看过", 3: "在看", 4: "搁置", 5: "抛弃"}
@@ -130,12 +131,14 @@ def plan_collection(source, current, import_date=True, *, tag_names=None):
     tag_names = {} if tag_names is None else tag_names
     merged_tags = {}
     for tag in payload["tags"]:
-        key = tag.casefold()
-        merged_tags.setdefault(key, tag)
+        key = normalize_tag_key(tag)
+        if key:  # 只保留有效的标签
+            merged_tags.setdefault(key, tag)
     for tag in tags:
-        key = tag.casefold()
-        canonical = tag_names.setdefault(key, tag)
-        merged_tags.setdefault(key, canonical)
+        key = normalize_tag_key(tag)
+        if key:  # 只保留有效的标签
+            canonical = tag_names.setdefault(key, tag)
+            merged_tags.setdefault(key, canonical)
     payload["tags"] = list(merged_tags.values())
     payload["post_to_fediverse"] = False
     if current and current.get("created_time"):

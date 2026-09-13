@@ -14,6 +14,7 @@ from app.models import (
 )
 from app.neodb import NeoDB
 from app.resolution import decision, inspect_candidates
+from app.tag_utils import normalize_tag_key
 
 FAILURES = {"resolve_failed", "failed", "partial", "conflict", "blocked_private_visibility"}
 
@@ -67,8 +68,9 @@ class Migrator:
                 if not isinstance(tag, str) or not tag.strip():
                     continue
                 tag = tag.strip()
-                key = tag.casefold()
-                tag_names.setdefault(key, tag)
+                key = normalize_tag_key(tag)
+                if key:  # 只保留有效的标签
+                    tag_names.setdefault(key, tag)
 
     def select_profile(self):
         bgm, neo = self.accounts()
@@ -711,7 +713,9 @@ class Migrator:
         # Saved previews may have reserved names that have not been written yet.
         for row in rows:
             for tag in row["plan"]["after"]["tags"]:
-                tag_names.setdefault(tag.casefold(), tag)
+                key = normalize_tag_key(tag)
+                if key:  # 只保留有效的标签
+                    tag_names.setdefault(key, tag)
         self.reserve_tag_names(tag_names, rows)
         limit = limit if limit is not None else asyncio.Semaphore(WRITE_CONCURRENCY)
         stop = stop if stop is not None else asyncio.Event()

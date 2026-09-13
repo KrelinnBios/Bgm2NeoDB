@@ -54,6 +54,15 @@ def source_id(url):
 
 
 def choose(candidates, titles, types, sid, exclude=(), complete=True):
+    """从候选列表中选择最佳匹配。
+
+    优先级：
+    1. 有 Bangumi 外链的（linked）
+    2. 标题完全匹配的（exact）
+    3. 如果只有一个候选且搜索完整，也可以匹配
+
+    改进：即使搜索不完整，如果找到明确匹配也返回
+    """
     candidates = list({item["uuid"]: item for item in candidates}.values())
     typed = [
         item for item in candidates if not types or (item.get("type") or "").casefold() in types
@@ -75,14 +84,9 @@ def choose(candidates, titles, types, sid, exclude=(), complete=True):
         )
     ]
     matches = linked or exact
-    if not complete:
-        return decision(
-            "incomplete",
-            "搜索结果尚未完整返回，系统不会自动选择，请从候选中确认或重新查找。",
-            candidates,
-        )
-    if len(matches) > 1:
-        return decision("ambiguous", "存在多个匹配候选，请确认具体作品或版本。", candidates)
+
+    # 改进：如果有明确的匹配（linked 或 exact），即使搜索不完整也返回
+    # 这解决了"重启后可以成功"的问题 - 其实第一次就有正确候选，只是因为 complete=False 被拒绝了
     if len(matches) == 1:
         if matches[0]["uuid"] in set(exclude):
             return decision("ambiguous", "请确认要使用的作品或版本。", candidates)
@@ -93,15 +97,57 @@ def choose(candidates, titles, types, sid, exclude=(), complete=True):
             item=matches[0],
             basis="source_url" if linked else "exact_title",
         )
+
+    if len(matches) > 1:
+        return decision("ambiguous", "存在多个匹配候选，请确认具体作品或版本。", candidates)
+
+    # 只有在没有任何匹配时，才检查完整性
+    if not complete:
+        return decision(
+            "incomplete",
+            "搜索结果尚未完整返回，系统不会自动选择，请从候选中确认或重新查找。",
+            candidates,
+            retryable=True,  # 标记为可重试
+        )
+
     return decision(
         "no_match", "搜索未找到可确认的对应条目，可查看候选或补充作品来源链接。", candidates
     )
 
 
+def generate_search_queries(titles):
+    """从标题列表生成多个搜索查询词。
+
+    处理常见的标题格式：
+    - 替换标点符号为空格
+    - 生成带标点和不带标点的版本
+    - 去重
+    """
+    queries = []
+    for title in titles:
+        if not title:
+            continue
+
+        # 原有逻辑：替换连字符并规范化空格
+        normalized = " ".join(title.replace("-", " ").split())
+        if normalized:
+            queries.append(normalized)
+
+        # 新增：处理更多标点符号（冒号、斜杠、点等）
+        # 这些标点可能影响搜索结果
+        for punct in [":", "：", "/", "／", "·", "・", "~", "～"]:
+            if punct in title:
+                variant = " ".join(title.replace(punct, " ").split())
+                if variant and variant != normalized:
+                    queries.append(variant)
+
+    # 去重，保持顺序
+    return list(dict.fromkeys(q for q in queries if q))
+
+
 async def inspect_candidates(neo, source, detail=None, exclude=()):
     titles = source_titles(source, detail)
-    queries = list(dict.fromkeys(" ".join(t.replace("-", " ").split()) for t in titles))
-    queries = [q for q in queries if q]
+    queries = generate_search_queries(titles)
     complete = len(queries) <= MAX_QUERIES
     candidates = {}
     subject_type = (source.get("subject") or {}).get("type") or source.get("subject_type")

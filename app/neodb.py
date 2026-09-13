@@ -5,19 +5,42 @@ from urllib.parse import urlsplit
 from app.errors import AppError, DeadlineExceeded
 from app.http import APIClient, response_json, retry_after, same_origin_url
 from app.models import bangumi_url, normalized_mark, normalized_title
+from app.tag_utils import normalize_tag_key
 
 
 def title_keys(text):
+    """生成标题的多个匹配键，提高匹配灵活性。
+
+    生成策略：
+    1. 完整标题规范化（去除所有空格和标点）
+    2. 按常见分隔符拆分后的各部分
+    3. 保留部分标点的版本
+
+    目标：让 "Re:Zero" 和 "Re Zero" 能够匹配
+    """
     if not isinstance(text, str):
         return set()
     keys = set()
+
+    # 核心：移除所有标点和空格的版本（最宽松的匹配）
     normalized = normalized_title(text)
     if normalized:
         keys.add(normalized)
+
+    # 移除常见标点符号的版本
+    text_no_punct = text
+    for punct in [':', '：', '/', '／', '·', '・', '~', '～', '-', '－', ' ']:
+        text_no_punct = text_no_punct.replace(punct, '')
+    text_no_punct = text_no_punct.strip().casefold()
+    if text_no_punct:
+        keys.add(text_no_punct)
+
+    # 按分隔符拆分（用于匹配系列作品）
     for part in re.split(r"[/／|]", text):
         piece = normalized_title(part)
-        if piece:
+        if piece and len(piece) > 2:  # 过滤太短的部分
             keys.add(piece)
+
     return keys
 
 
@@ -118,8 +141,9 @@ class NeoDB(APIClient):
                         raise AppError("NeoDB 标签分页包含重复数据，请重试。")
                     seen.add(uid)
                     title = title.strip()
-                    key = title.casefold()
-                    names.setdefault(key, title)
+                    key = normalize_tag_key(title)
+                    if key:  # 只保留有效的标签
+                        names.setdefault(key, title)
                 if len(seen) > count or (not data and page < pages):
                     raise AppError("NeoDB 标签列表不完整，已停止迁移，请重试。")
                 if page >= pages:
