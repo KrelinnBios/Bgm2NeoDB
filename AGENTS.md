@@ -22,7 +22,7 @@
 
 ## 项目概览
 
-Bgm2NeoDB 是一个本地运行的 Python 网页工具，用于将 Bangumi 收藏迁移到 NeoDB。项目采用 Flask 提供本地网页界面，使用 SQLite 保存迁移状态和映射关系。
+Bgm2NeoDB 是一个本地运行的 Python 网页工具，用于将 Bangumi 收藏迁移到 NeoDB 或兼容实例。项目采用 Flask 提供本地网页界面，使用 SQLite 保存迁移状态和映射关系。
 
 **技术栈：**
 - Python 3.11+（推荐 3.12）
@@ -76,7 +76,7 @@ Bgm2NeoDB 是一个本地运行的 Python 网页工具，用于将 Bangumi 收�
 - 服务固定监听 `127.0.0.1:8765`，不接受外部连接
 - OAuth 回调使用 `http://127.0.0.1:8765/callback`
 - 请求必须校验 Host、Referer 和 CSRF 令牌
-- 程序不会上传用户数据到远程服务器
+- 程序不会将用户数据上传到项目维护者或其他无关的远程服务器；与 Bangumi、NeoDB 的必要接口请求除外
 
 ### 限流与礼节
 
