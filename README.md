@@ -7,7 +7,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-127.0.0.1:8765-2f6f73?style=flat-square" alt="本地运行">
-  <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-%E6%B5%8F%E8%A7%88%E5%99%A8-2ea44f?style=flat-square" alt="浏览器">
+  <img src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-%E6%B5%8F%E8%A7%88%E5%99%A8-247344?style=flat-square" alt="浏览器">
   <img src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF-MIT-1f5f9c?style=flat-square" alt="MIT License">
 </p>
 
@@ -91,7 +91,7 @@ python main.py
 - 多个版本、自动匹配时的重复目标和不完整搜索结果会保存候选与具体原因，不会被下一轮统一改写为超时；人工确认后按所选目标处理当前条目。
 - 在条目详情中查看保存的候选，必要时点击“重新查找候选”。确认选择后会保存人工映射并只迁移当前条目，重新扫描仍会保留。
 - 没有 NeoDB 链接时，可直接在详情中粘贴作品外链，点击“按链接导入”。程序只把链接交给已连接的 NeoDB 实例解析，不直接创建 NeoDB 条目；未收录的普通作品在后台抓取期间会自动轮询，页面最多等待 60 秒并显示倒计时，不需要重复点击。
-- 手工按链接导入会先立即提交给 NeoDB；未收录的普通作品在后台抓取期间会自动轮询，页面最多等待 60 秒并显示倒计时，不需要重复点击。不支持跨实例导入。
+- 手工按链接导入会先立即提交给 NeoDB；未收录的普通作品在后台抓取期间会自动轮询，页面最多等待 60 秒并显示倒计时，不需要重复点击。
 - 如果 NeoDB 没有对应条目，请使用详情中的“在 NeoDB 创建条目”按钮前往创建页面；书籍、音乐和游戏分别进入 `Edition`、`Album` 和 `Game`，动画及三次元作品则进入通用条目创建页。
 - 自动继续仅重试临时问题和未完成的写入；需要确认的条目不会反复请求。详见 [匹配与恢复设计](docs/RESOLUTION.md)。
 
