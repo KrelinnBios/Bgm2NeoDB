@@ -101,7 +101,9 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
         csp = f"default-src 'self'; script-src 'self'{nonce_part}; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         response.headers.update(
             {
-                "Cache-Control": "no-store",
+                "Cache-Control": "no-cache"
+                if request.url.path.startswith("/static/") and response.status_code in (200, 304)
+                else "no-store",
                 "Referrer-Policy": "no-referrer",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
@@ -221,25 +223,28 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
 
     @app.get("/api/entries")
     async def entries(page: int = 1, filter: str = "all", q: str = ""):
-        rows = engine.db.rows(engine.pid) if engine.pid else []
+        page = max(1, page)
+        statuses = None
         if filter.startswith("group:"):
-            allowed = STATUS_GROUPS.get(filter.removeprefix("group:"), set())
-            rows = [r for r in rows if r["status"] in allowed]
+            statuses = STATUS_GROUPS.get(filter.removeprefix("group:"), set())
         elif filter.startswith("status:"):
-            rows = [r for r in rows if r["status"] == filter.removeprefix("status:")]
+            statuses = {filter.removeprefix("status:")}
         elif filter == "failed":
-            rows = [r for r in rows if r["status"] in FAILURES | {"writing"}]
+            statuses = FAILURES | {"writing"}
         elif filter == "ready":
-            rows = [r for r in rows if r["status"] == "ready"]
+            statuses = {"ready"}
         elif filter == "done":
-            rows = [r for r in rows if r["status"] == "migrated"]
+            statuses = {"migrated"}
+        total, rows = (
+            engine.db.page(engine.pid, page=page, statuses=statuses, query=q)
+            if engine.pid
+            else (0, [])
+        )
         result = []
         for row in rows:
             source = row["source"]
             subject = source.get("subject") or {}
             title = subject.get("name_cn") or subject.get("name") or str(row["subject_id"])
-            if q and q.casefold() not in (title + str(row["subject_id"])).casefold():
-                continue
             result.append(
                 {
                     "id": row["subject_id"],
@@ -260,8 +265,7 @@ def create_app(data=DATA, credentials=None, bangumi_factory=None, neodb_factory=
                     "resolution": row.get("resolution"),
                 }
             )
-        page = max(1, page)
-        return {"total": len(result), "page": page, "entries": result[(page - 1) * 30 : page * 30]}
+        return {"total": total, "page": page, "entries": result}
 
     def row_by_id(sid):
         if not engine.pid:

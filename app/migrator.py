@@ -868,7 +868,7 @@ class Migrator:
                 raise result
 
     def report(self):
-        rows = self.db.rows(self.pid) if self.pid else []
+        rows = self.db.report_rows(self.pid) if self.pid else []
         counts = Counter(r["status"] for r in rows)
         result = {
             "generated_at": now(),

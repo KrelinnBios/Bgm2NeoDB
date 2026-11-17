@@ -32,6 +32,26 @@ async def test_no_session_no_access(web):
     assert (await client.get("/api/state")).status_code == 403
 
 
+@pytest.mark.parametrize("asset", ["app.js", "style.css"])
+async def test_static_assets_revalidate_but_private_responses_are_not_cached(web, asset):
+    client, _ = web
+    response = await client.get(f"/static/{asset}")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+    cached = await client.get(
+        f"/static/{asset}", headers={"If-None-Match": response.headers["etag"]}
+    )
+    assert cached.status_code == 304
+    assert cached.content == b""
+    assert cached.headers["cache-control"] == "no-cache"
+    assert cached.headers["x-content-type-options"] == "nosniff"
+    changed = await client.get(f"/static/{asset}", headers={"If-None-Match": '"old"'})
+    assert changed.status_code == 200
+    assert changed.content == response.content
+    for url in ("/", "/api/state", "/api/entries", "/static/missing.js"):
+        assert (await client.get(url)).headers["cache-control"] == "no-store"
+
+
 async def test_dns_rebinding_host_blocked(web):
     client, _ = web
     assert (await client.get("/", headers={"Host": "evil.example"})).status_code == 403
@@ -128,6 +148,45 @@ async def test_each_status_has_separate_count_and_filter(web):
     assert (await client.get("/api/entries?filter=group:migrated")).json()["total"] == 1
     engine.db.update(engine.pid, 3, status="migrated")
     assert engine.report()["writing"] == 0
+
+
+async def test_entries_only_decode_requested_page_and_keep_details(web, monkeypatch):
+    client, app = web
+    await client.get("/")
+    engine = app.state.engine
+    engine.pid = "pagination-test"
+    engine.db.profile(engine.pid, {})
+    engine.db.import_snapshot(engine.pid, "scan", [collection(sid) for sid in range(1, 66)])
+    resolution = {"retryable": False, "candidates": [catalog_item(31)]}
+    engine.db.update(
+        engine.pid,
+        31,
+        status="conflict",
+        resolution=resolution,
+        subject_detail={"platform": "TV"},
+        item=catalog_item(31),
+    )
+    decoded = []
+    original = engine.db._decode_rows
+
+    def decode(rows):
+        decoded.extend(row["subject_id"] for row in rows)
+        return original(rows)
+
+    monkeypatch.setattr(engine.db, "_decode_rows", decode)
+    result = (await client.get("/api/entries?page=2")).json()
+    assert result["total"] == 65
+    assert result["page"] == 2
+    assert [row["id"] for row in result["entries"]] == list(range(31, 61))
+    assert decoded == list(range(31, 61))
+    assert result["entries"][0]["resolution"] == resolution
+    assert result["entries"][0]["source_platform"] == "TV"
+    assert result["entries"][0]["target_url"] == catalog_item(31)["url"]
+    filtered = (
+        await client.get("/api/entries", params={"filter": "group:conflict", "q": "31", "page": 0})
+    ).json()
+    assert filtered["total"] == filtered["page"] == 1
+    assert filtered["entries"] == result["entries"][:1]
 
 
 def test_keyring_failure_does_not_fall_back_to_plaintext():

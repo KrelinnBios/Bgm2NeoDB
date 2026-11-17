@@ -44,6 +44,60 @@ async def test_scan_never_writes_and_keeps_all_fields_in_database(engine, server
     assert not list((engine.data / "profiles" / engine.pid).glob("*.json"))
 
 
+async def test_lightweight_report_matches_complete_rows(engine, monkeypatch):
+    from itertools import product
+
+    engine.select_profile()
+    statuses = (
+        "pending",
+        "ready",
+        "writing",
+        "migrated",
+        "skipped",
+        "resolve_failed",
+        "failed",
+        "partial",
+        "conflict",
+        "blocked_private_visibility",
+    )
+    resolutions = (None, {}, {"basis": "manual"}, {"retryable": False}, {"retryable": True})
+    variants = list(product(statuses, resolutions, range(3)))
+    engine.db.import_snapshot(engine.pid, "old", [collection(9999)])
+    engine.db.import_snapshot(
+        engine.pid,
+        "report",
+        [
+            collection(
+                sid,
+                type=sid % 5 + 1,
+                rate=(0, 8, None)[variant],
+                comment=("", "comment", None)[variant],
+                tags=([], ["tag"], None)[variant],
+                ep_status=(0, 12, None)[variant],
+                vol_status=(1, 0, None)[variant],
+            )
+            for sid, (_, _, variant) in enumerate(variants, 1)
+        ],
+    )
+    for sid, (status, resolution, variant) in enumerate(variants, 1):
+        engine.db.update(
+            engine.pid,
+            sid,
+            status=status,
+            resolution=resolution,
+            item=(None, {}, catalog_item(sid))[variant],
+            plan=(None, {}, {"after": {"shelf_type": "complete"}})[variant],
+            migrated_fields=["rating_grade", "comment_text", "tags"] if sid % 2 else [],
+        )
+    actual = engine.report()
+    monkeypatch.setattr(engine.db, "report_rows", engine.db.rows)
+    expected = engine.report()
+    actual.pop("generated_at")
+    expected.pop("generated_at")
+    assert actual == expected
+    assert actual["total"] == len(variants)
+
+
 async def test_explicit_preview_schedules_another_write_even_when_identical(engine, server):
     await run(engine, "prepare")
     await run(engine, "migrate")

@@ -65,7 +65,9 @@ class Database:
         with self.connect() as db:
             if metadata is not None:
                 db.execute(
-                    "INSERT INTO profiles(id,metadata) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata",
+                    """INSERT INTO profiles(id,metadata) VALUES(?,?)
+                    ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata
+                    WHERE profiles.metadata<>excluded.metadata""",
                     (pid, encode(metadata)),
                 )
             row = db.execute("SELECT * FROM profiles WHERE id=?", (pid,)).fetchone()
@@ -115,6 +117,69 @@ class Database:
                 + " ORDER BY e.subject_id",
                 parameters,
             ).fetchall()
+        return self._decode_rows(rows)
+
+    def page(self, pid, *, page=1, page_size=30, statuses=None, query=""):
+        conditions = ["e.profile=?", "e.scan=p.scan"]
+        parameters = [pid]
+        if statuses is not None:
+            if not statuses:
+                return 0, []
+            conditions.append("e.status IN (" + ",".join("?" for _ in statuses) + ")")
+            parameters.extend(statuses)
+        if query:
+            # Keep Python's Unicode casefold and literal substring semantics.
+            conditions.append("""instr(casefold(COALESCE(
+                NULLIF(json_extract(e.source, '$.subject.name_cn'), ''),
+                NULLIF(json_extract(e.source, '$.subject.name'), ''),
+                CAST(e.subject_id AS TEXT)) || e.subject_id), ?) > 0""")
+            parameters.append(query.casefold())
+        selection = " FROM entries e JOIN profiles p ON p.id=e.profile WHERE " + " AND ".join(
+            conditions
+        )
+        with self.connect() as db:
+            if query:
+                db.create_function("casefold", 1, str.casefold, deterministic=True)
+            # Count and page must describe the same snapshot even during migration.
+            db.execute("BEGIN")
+            total = db.execute("SELECT COUNT(*)" + selection, parameters).fetchone()[0]
+            offset = (max(1, page) - 1) * page_size
+            if offset >= total:
+                return total, []
+            rows = db.execute(
+                "SELECT e.*" + selection + " ORDER BY e.subject_id LIMIT ? OFFSET ?",
+                (*parameters, page_size, offset),
+            ).fetchall()
+        return total, self._decode_rows(rows)
+
+    def report_rows(self, pid):
+        # Reports need presence flags, not target metadata, plans or candidate lists.
+        # Keep the row shape so the migration/report rules remain in Migrator.
+        with self.connect() as db:
+            rows = db.execute(
+                """SELECT e.status, e.migrated_fields,
+                json_object(
+                    'type', json_extract(e.source, '$.type'),
+                    'rate', json_extract(e.source, '$.rate'),
+                    'comment', json_extract(e.source, '$.comment'),
+                    'tags', json_extract(e.source, '$.tags'),
+                    'ep_status', json_extract(e.source, '$.ep_status'),
+                    'vol_status', json_extract(e.source, '$.vol_status')) AS source,
+                CASE WHEN e.item IS NULL OR json(e.item) IN ('null', '{}')
+                    THEN 'false' ELSE 'true' END AS item,
+                CASE WHEN e.plan IS NULL OR json(e.plan) IN ('null', '{}')
+                    THEN 'false' ELSE 'true' END AS plan,
+                CASE WHEN e.resolution IS NULL OR json(e.resolution) IN ('null', '{}')
+                    THEN NULL ELSE json_object(
+                        'retryable', json_extract(e.resolution, '$.retryable')) END AS resolution
+                FROM entries e JOIN profiles p ON p.id=e.profile
+                WHERE e.profile=? AND e.scan=p.scan""",
+                (pid,),
+            ).fetchall()
+        return self._decode_rows(rows)
+
+    @staticmethod
+    def _decode_rows(rows):
         result = []
         for raw in rows:
             row = dict(raw)
@@ -126,7 +191,8 @@ class Database:
                 "resolution",
                 "subject_detail",
             ):
-                row[key] = json.loads(row[key]) if row[key] else None
+                if key in row:
+                    row[key] = json.loads(row[key]) if row[key] else None
             result.append(row)
         return result
 
